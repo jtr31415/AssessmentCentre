@@ -28,15 +28,15 @@ export default function AdminSlots() {
   // Edit state: slot id -> { starts_at: string, capacity: number }
   const [editState, setEditState] = useState<Record<number, { starts_at: string; capacity: number }>>({});
 
-  // Reassign state: slot id -> new_slot_id string
-  const [reassignSlotId, setReassignSlotId] = useState<Record<number, string>>({});
+  // Reassign state: keyed by `${slot.id}-${candidate_id}` -> new_slot_id string
+  const [reassignSlotId, setReassignSlotId] = useState<Record<string, string>>({});
 
   async function load() {
     try {
       const data = await api.get("/api/admin/slots");
       setSlots(data as Slot[]);
-    } catch {
-      // ignore load errors for now
+    } catch (e) {
+      setCreateError((e as Error).message);
     }
   }
 
@@ -60,7 +60,7 @@ export default function AdminSlots() {
     try {
       await api.post("/api/admin/slots", {
         starts_at: new Date(startsAt).toISOString(),
-        capacity,
+        capacity: capacity || 1,
       });
       setStartsAt("");
       setCapacity(1);
@@ -103,7 +103,7 @@ export default function AdminSlots() {
     try {
       await api.patch(`/api/admin/slots/${slot.id}`, {
         starts_at: new Date(es.starts_at).toISOString(),
-        capacity: Number(es.capacity),
+        capacity: Number(es.capacity) || 1,
       });
       cancelEdit(slot.id);
       await load();
@@ -113,7 +113,8 @@ export default function AdminSlots() {
   }
 
   async function handleReassign(slot: Slot, candidateId: string) {
-    const newSlotId = reassignSlotId[slot.id];
+    const key = `${slot.id}-${candidateId}`;
+    const newSlotId = reassignSlotId[key];
     if (!newSlotId) return;
     clearSlotError(slot.id);
     try {
@@ -123,7 +124,7 @@ export default function AdminSlots() {
       });
       setReassignSlotId((prev) => {
         const next = { ...prev };
-        delete next[slot.id];
+        delete next[key];
         return next;
       });
       await load();
@@ -164,7 +165,7 @@ export default function AdminSlots() {
               type="number"
               value={capacity}
               min={1}
-              onChange={(e) => setCapacity(Number(e.target.value))}
+              onChange={(e) => setCapacity(Number(e.target.value) || 1)}
               required
               style={{ width: 60 }}
             />
@@ -190,7 +191,7 @@ export default function AdminSlots() {
             </thead>
             <tbody>
               {slots.map((slot) => {
-                const isBooked = !slot.is_open || slot.bookings.length > 0;
+                const isBooked = slot.bookings.length > 0;
                 const es = editState[slot.id];
                 const err = slotErrors[slot.id];
 
@@ -220,7 +221,7 @@ export default function AdminSlots() {
                           min={1}
                           style={{ width: 60 }}
                           onChange={(e) =>
-                            setEditState((prev) => ({ ...prev, [slot.id]: { ...prev[slot.id], capacity: Number(e.target.value) } }))
+                            setEditState((prev) => ({ ...prev, [slot.id]: { ...prev[slot.id], capacity: Number(e.target.value) || 1 } }))
                           }
                         />
                       ) : (
@@ -259,11 +260,11 @@ export default function AdminSlots() {
                           <input
                             type="number"
                             placeholder="New slot ID"
-                            value={reassignSlotId[slot.id] ?? ""}
+                            value={reassignSlotId[`${slot.id}-${booking.candidate_id}`] ?? ""}
                             min={1}
                             style={{ width: 90, marginRight: 4 }}
                             onChange={(e) =>
-                              setReassignSlotId((prev) => ({ ...prev, [slot.id]: e.target.value }))
+                              setReassignSlotId((prev) => ({ ...prev, [`${slot.id}-${booking.candidate_id}`]: e.target.value }))
                             }
                           />
                           <button
