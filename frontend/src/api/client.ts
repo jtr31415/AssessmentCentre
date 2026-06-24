@@ -13,5 +13,6 @@ export const api = {
   get: (p: string) => request("GET", p),
   post: (p: string, b?: unknown) => request("POST", p, b),
   patch: (p: string, b?: unknown) => request("PATCH", p, b),
+  put: (p: string, b?: unknown) => request("PUT", p, b),
   del: (p: string) => request("DELETE", p),
 };
