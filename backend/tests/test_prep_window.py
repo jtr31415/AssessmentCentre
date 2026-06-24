@@ -181,3 +181,80 @@ class TestBuildPreview:
         preview = self._make_preview(days_out=8, n=8)
         assert preview["unlocks_immediately"] is True
         assert preview["prep_days"] == 8.0
+
+    def test_build_preview_reduced_prep_days(self):
+        """build_preview: 3-day slot, N=8 → unlocks_immediately True AND prep_days==3.0.
+
+        Guards against a regression that computes prep_days as slot - now
+        instead of slot - unlock_at (which would give 3.0 anyway for reduced
+        prep but would be wrong once unlock_at != now in other scenarios).
+        """
+        preview = self._make_preview(days_out=3, n=8)
+        assert preview["unlocks_immediately"] is True
+        assert preview["prep_days"] == 3.0
+
+
+# ---------------------------------------------------------------------------
+# config_helpers
+# ---------------------------------------------------------------------------
+
+class TestConfigHelpers:
+    """Integration tests for get_config_int / get_config_str using a real DB session."""
+
+    def test_get_config_int_returns_stored_value(self, db_session):
+        """get_config_int returns the stored int when the key exists."""
+        from app.models import Config
+        from app.config_helpers import get_config_int
+
+        db_session.add(Config(key="prep_window_days", value="5"))
+        db_session.commit()
+
+        result = get_config_int(db_session, "prep_window_days", 8)
+        assert result == 5
+
+    def test_get_config_int_returns_default_when_key_absent(self, db_session):
+        """get_config_int returns the default when the key is absent."""
+        from app.config_helpers import get_config_int
+
+        result = get_config_int(db_session, "missing_key", 8)
+        assert result == 8
+
+    def test_get_config_str_returns_stored_value(self, db_session):
+        """get_config_str returns the stored string when the key exists."""
+        from app.models import Config
+        from app.config_helpers import get_config_str
+
+        db_session.add(Config(key="display_timezone", value="America/New_York"))
+        db_session.commit()
+
+        result = get_config_str(db_session, "display_timezone", "Europe/London")
+        assert result == "America/New_York"
+
+    def test_get_config_str_returns_default_when_key_absent(self, db_session):
+        """get_config_str returns the default when the key is absent."""
+        from app.config_helpers import get_config_str
+
+        result = get_config_str(db_session, "display_timezone", "Europe/London")
+        assert result == "Europe/London"
+
+    def test_get_config_int_returns_default_when_value_is_none(self, db_session):
+        """get_config_int returns the default when the row exists but value is None."""
+        from app.models import Config
+        from app.config_helpers import get_config_int
+
+        db_session.add(Config(key="prep_window_days", value=None))
+        db_session.commit()
+
+        result = get_config_int(db_session, "prep_window_days", 8)
+        assert result == 8
+
+    def test_get_config_str_returns_default_when_value_is_none(self, db_session):
+        """get_config_str returns the default when the row exists but value is None."""
+        from app.models import Config
+        from app.config_helpers import get_config_str
+
+        db_session.add(Config(key="display_timezone", value=None))
+        db_session.commit()
+
+        result = get_config_str(db_session, "display_timezone", "Europe/London")
+        assert result == "Europe/London"
