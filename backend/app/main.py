@@ -5,7 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.routers import auth, public
+from app.routers import admin, auth, public
 from app.seed import seed_admin_and_config
 
 
@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret, https_only=False, same_site="lax")
     app.include_router(public.router)
     app.include_router(auth.router)
+    app.include_router(admin.router)
     return app
 
 
