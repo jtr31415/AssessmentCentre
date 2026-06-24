@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -18,3 +20,8 @@ class SetPassword(BaseModel):
 
 class CreateCandidate(BaseModel):
     first_name: str
+
+
+class SlotCreate(BaseModel):
+    starts_at: datetime
+    capacity: int = 1
