@@ -40,6 +40,21 @@ def test_create_candidate_requires_admin(client, db_session):
     assert r.status_code == 401
 
 
+def test_set_password_token_is_single_use(client, db_session):
+    seed_admin_and_config(db_session)
+    login_admin(client)
+    data = client.post("/api/admin/candidates", json={"first_name": "Ada"}).json()
+    token = data["set_password_path"].split("token=")[1]
+
+    # First use — must succeed
+    r1 = client.post("/api/auth/candidate/set-password", json={"token": token, "password": "pw-first123"})
+    assert r1.status_code == 200
+
+    # Second use with same token — must be rejected (token is single-use)
+    r2 = client.post("/api/auth/candidate/set-password", json={"token": token, "password": "pw-second456"})
+    assert r2.status_code == 400
+
+
 def test_no_password_in_audit(client, db_session):
     from app.models import AuditLog
     seed_admin_and_config(db_session)
@@ -49,3 +64,4 @@ def test_no_password_in_audit(client, db_session):
     client.post("/api/auth/candidate/set-password", json={"token": token, "password": "supersecretpw"})
     details = " ".join(r.detail or "" for r in db_session.query(AuditLog).all())
     assert "supersecretpw" not in details
+    assert token not in details
