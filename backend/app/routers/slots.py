@@ -43,13 +43,6 @@ def list_slots(
     db: Session = Depends(get_db),  # noqa: B008
     _: object = Depends(current_admin),  # noqa: B008
 ):
-    # Subquery: count bookings per slot
-    booking_count_sq = (
-        select(Booking.slot_id, func.count(Booking.id).label("cnt"))
-        .group_by(Booking.slot_id)
-        .subquery()
-    )
-
     rows = db.execute(select(Slot).order_by(Slot.starts_at)).scalars().all()
 
     result = []

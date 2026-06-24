@@ -4,13 +4,7 @@ import os
 
 os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "changeme")
 
-from datetime import datetime, timezone
-
-import pytest
-
 from app.seed import seed_admin_and_config
-
-UTC = timezone.utc
 
 
 def _admin_client(client, db_session):
@@ -129,6 +123,5 @@ class TestListSlots:
         b = bookings[0]
         assert b["candidate_id"] == "C001"
         assert b["first_name"] == "Alice"
-        # Ensure no extra PII fields
-        assert "password_hash" not in b
-        assert "api_key_encrypted" not in b
+        # Ensure booking dict has EXACTLY the two allowed keys (no PII leakage)
+        assert set(b.keys()) == {"candidate_id", "first_name"}
