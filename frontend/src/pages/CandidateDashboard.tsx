@@ -94,6 +94,10 @@ function ApiKeySection() {
   const [copied, setCopied] = useState(false);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => () => {
+    if (copyTimeout.current) clearTimeout(copyTimeout.current);
+  }, []);
+
   async function revealKey() {
     setLoading(true);
     setError("");
@@ -102,11 +106,11 @@ function ApiKeySection() {
       const data = await api.get("/api/me/api-key");
       setKeyInfo(data as ApiKeyInfo);
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg.includes("404") || msg.toLowerCase().includes("not found")) {
+      const status = (e as { status?: number }).status;
+      if (status === 404) {
         setNoKey(true);
       } else {
-        setError(msg);
+        setError((e as Error).message);
       }
     } finally {
       setLoading(false);
@@ -131,7 +135,14 @@ function ApiKeySection() {
         </button>
       )}
       {error && <p style={{ color: "red" }}>{error}</p>}
-      {noKey && <p style={{ color: "#888" }}>Your assessor hasn't added your API key yet.</p>}
+      {noKey && (
+        <div>
+          <p style={{ color: "#888" }}>Your assessor hasn't added your API key yet.</p>
+          <button onClick={revealKey} disabled={loading} style={{ marginTop: 4 }}>
+            Try again
+          </button>
+        </div>
+      )}
       {keyInfo && (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
