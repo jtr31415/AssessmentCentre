@@ -25,3 +25,8 @@ class CreateCandidate(BaseModel):
 class SlotCreate(BaseModel):
     starts_at: datetime
     capacity: int = 1
+
+
+class SlotUpdate(BaseModel):
+    starts_at: datetime | None = None
+    capacity: int | None = None

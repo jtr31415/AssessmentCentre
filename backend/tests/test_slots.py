@@ -125,3 +125,114 @@ class TestListSlots:
         assert b["first_name"] == "Alice"
         # Ensure booking dict has EXACTLY the two allowed keys (no PII leakage)
         assert set(b.keys()) == {"candidate_id", "first_name"}
+
+
+# ---------------------------------------------------------------------------
+# Task 3: PATCH + DELETE /api/admin/slots/{slot_id}
+# ---------------------------------------------------------------------------
+
+SLOT_TS = "2026-11-01T10:00:00+00:00"
+SLOT_TS2 = "2026-12-01T10:00:00+00:00"
+
+
+def _create_slot(client, starts_at=SLOT_TS, capacity=1):
+    r = client.post("/api/admin/slots", json={"starts_at": starts_at, "capacity": capacity})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def _insert_booking(db_session, slot_id):
+    """Directly insert a Booking row for the given slot (no candidate needed for FK check)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Booking, Candidate
+
+    candidate = Candidate(candidate_id="TEST001", first_name="Tester", status="invited")
+    db_session.add(candidate)
+    db_session.flush()
+
+    slot_starts = datetime(2026, 11, 1, 10, 0, 0, tzinfo=UTC)
+    booking = Booking(
+        candidate_id=candidate.id,
+        slot_id=slot_id,
+        unlock_at=slot_starts - timedelta(days=8),
+    )
+    db_session.add(booking)
+    db_session.commit()
+
+
+class TestEditSlot:
+    def test_patch_unbooked_slot_updates_starts_at_and_capacity(self, client, db_session):
+        """PATCH an unbooked slot with new starts_at and capacity → 200, values updated."""
+        c = _admin_client(client, db_session)
+        slot_id = _create_slot(c)
+
+        r = c.patch(
+            f"/api/admin/slots/{slot_id}",
+            json={"starts_at": SLOT_TS2, "capacity": 3},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["id"] == slot_id
+        assert data["capacity"] == 3
+        assert "2026-12-01" in data["starts_at"]
+        assert data["booked_count"] == 0
+        assert data["is_open"] is True
+
+    def test_patch_booked_slot_returns_409(self, client, db_session):
+        """PATCH a slot that has a booking → 409 with correct message."""
+        c = _admin_client(client, db_session)
+        slot_id = _create_slot(c)
+        _insert_booking(db_session, slot_id)
+
+        r = c.patch(f"/api/admin/slots/{slot_id}", json={"capacity": 5})
+        assert r.status_code == 409, r.text
+        assert "booked" in r.json()["detail"]
+
+    def test_patch_unknown_slot_returns_404(self, client, db_session):
+        """PATCH a non-existent slot → 404."""
+        c = _admin_client(client, db_session)
+        r = c.patch("/api/admin/slots/99999", json={"capacity": 2})
+        assert r.status_code == 404, r.text
+
+    def test_patch_slot_unauthenticated_returns_401(self, client, db_session):
+        """PATCH /api/admin/slots/{id} without login → 401."""
+        r = client.patch("/api/admin/slots/1", json={"capacity": 2})
+        assert r.status_code == 401, r.text
+
+
+class TestDeleteSlot:
+    def test_delete_unbooked_slot_succeeds_and_not_in_list(self, client, db_session):
+        """DELETE an unbooked slot → 200/204, then GET list no longer shows it."""
+        c = _admin_client(client, db_session)
+        slot_id = _create_slot(c)
+
+        r = c.delete(f"/api/admin/slots/{slot_id}")
+        assert r.status_code in (200, 204), r.text
+
+        # Slot should no longer appear in the list
+        list_r = c.get("/api/admin/slots")
+        assert list_r.status_code == 200
+        ids = [s["id"] for s in list_r.json()]
+        assert slot_id not in ids
+
+    def test_delete_booked_slot_returns_409(self, client, db_session):
+        """DELETE a slot that has a booking → 409 with correct message."""
+        c = _admin_client(client, db_session)
+        slot_id = _create_slot(c)
+        _insert_booking(db_session, slot_id)
+
+        r = c.delete(f"/api/admin/slots/{slot_id}")
+        assert r.status_code == 409, r.text
+        assert "booked" in r.json()["detail"]
+
+    def test_delete_unknown_slot_returns_404(self, client, db_session):
+        """DELETE a non-existent slot → 404."""
+        c = _admin_client(client, db_session)
+        r = c.delete("/api/admin/slots/99999")
+        assert r.status_code == 404, r.text
+
+    def test_delete_slot_unauthenticated_returns_401(self, client, db_session):
+        """DELETE /api/admin/slots/{id} without login → 401."""
+        r = client.delete("/api/admin/slots/1")
+        assert r.status_code == 401, r.text
