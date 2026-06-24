@@ -19,7 +19,7 @@ from app.audit import record
 from app.config_helpers import get_config_str
 from app.db import get_db
 from app.deps import current_admin, current_candidate
-from app.models import AuditLog, Candidate, Question  # noqa: F401
+from app.models import Candidate, Question
 from app.schemas import AnswerCreate, QuestionCreate
 
 _DEFAULT_SLA = "Questions are answered by a person, usually within 1 working day."
@@ -137,7 +137,11 @@ def admin_answer_question(
     if q is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="question not found")
 
-    q.answer = body.answer
+    stripped_answer = body.answer.strip()
+    if not stripped_answer:
+        raise HTTPException(status_code=422, detail="answer must not be empty")
+
+    q.answer = stripped_answer
     q.answered_at = datetime.now(UTC)
     db.commit()
     db.refresh(q)

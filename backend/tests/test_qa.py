@@ -118,10 +118,10 @@ def test_privacy_candidate_b_cannot_see_a_questions(client, db_session):
 def test_admin_sees_all_questions(client, db_session):
     seed_admin_and_config(db_session)
 
-    create_and_login_candidate(client, db_session, "Ada")
+    a_info = create_and_login_candidate(client, db_session, "Ada")
     r_a = client.post("/api/me/questions", json={"body": "A asks about schedule"})
     assert r_a.status_code == 201
-    a_cid = "cand-01"
+    a_cid = a_info["candidate_id"]
 
     client.post("/api/auth/logout")
     login_admin(client)
@@ -167,7 +167,7 @@ def test_admin_sees_all_questions(client, db_session):
 def test_admin_answer_visible_to_candidate(client, db_session):
     seed_admin_and_config(db_session)
 
-    create_and_login_candidate(client, db_session, "Ada")
+    a_info = create_and_login_candidate(client, db_session, "Ada")
     r = client.post("/api/me/questions", json={"body": "What time zone?"})
     assert r.status_code == 201
     question_id = r.json()["id"]
@@ -185,7 +185,7 @@ def test_admin_answer_visible_to_candidate(client, db_session):
     client.post("/api/auth/logout")
     client.post(
         "/api/auth/candidate/login",
-        json={"candidate_id": "cand-01", "password": "pw-123456"},
+        json={"candidate_id": a_info["candidate_id"], "password": "pw-123456"},
     )
     r2 = client.get("/api/me/questions")
     assert r2.status_code == 200
@@ -256,6 +256,38 @@ def test_admin_answer_missing_question_404(client, db_session):
 
     r = client.post("/api/admin/questions/99999/answer", json={"answer": "hi"})
     assert r.status_code == 404, r.text
+
+
+# ---------------------------------------------------------------------------
+# Test: empty / whitespace answer → rejected (422); question stays unanswered
+# ---------------------------------------------------------------------------
+
+def test_admin_empty_answer_rejected(client, db_session):
+    seed_admin_and_config(db_session)
+    create_and_login_candidate(client, db_session, "Ada")
+
+    r_q = client.post("/api/me/questions", json={"body": "Any answer?"})
+    assert r_q.status_code == 201
+    question_id = r_q.json()["id"]
+
+    client.post("/api/auth/logout")
+    login_admin(client)
+
+    # Empty string → 422
+    r1 = client.post(f"/api/admin/questions/{question_id}/answer", json={"answer": ""})
+    assert r1.status_code == 422, r1.text
+
+    # Whitespace-only → 422
+    r2 = client.post(f"/api/admin/questions/{question_id}/answer", json={"answer": "   "})
+    assert r2.status_code == 422, r2.text
+
+    # Question must remain unanswered
+    r3 = client.get("/api/admin/questions")
+    assert r3.status_code == 200
+    matching = [q for q in r3.json() if q["id"] == question_id]
+    assert len(matching) == 1
+    assert matching[0]["answered"] is False
+    assert matching[0]["answer"] is None
 
 
 # ---------------------------------------------------------------------------
