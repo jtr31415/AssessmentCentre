@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 
 interface OpenSlot {
@@ -16,12 +16,34 @@ interface Preview {
 
 export default function CandidateBooking() {
   const nav = useNavigate();
+  const [alreadyBooked, setAlreadyBooked] = useState<boolean | null>(null);
   const [slots, setSlots] = useState<OpenSlot[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loadError, setLoadError] = useState("");
   const [bookError, setBookError] = useState("");
   const [booking, setBooking] = useState(false);
+
+  // On mount: check whether the candidate already has a booking
+  useEffect(() => {
+    async function checkExisting() {
+      try {
+        const data = await api.get("/api/me/booking");
+        const booking = data as { has_booking: boolean };
+        if (booking.has_booking) {
+          setAlreadyBooked(true);
+        } else {
+          setAlreadyBooked(false);
+          loadSlots();
+        }
+      } catch {
+        // If the check fails just fall through to show the slot picker
+        setAlreadyBooked(false);
+        loadSlots();
+      }
+    }
+    checkExisting();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadSlots() {
     setLoadError("");
@@ -32,10 +54,6 @@ export default function CandidateBooking() {
       setLoadError((e as Error).message);
     }
   }
-
-  useEffect(() => {
-    loadSlots();
-  }, []);
 
   async function handleSelect(id: number) {
     setSelectedId(id);
@@ -64,6 +82,24 @@ export default function CandidateBooking() {
     } finally {
       setBooking(false);
     }
+  }
+
+  // Still determining booking status
+  if (alreadyBooked === null) {
+    return <div style={{ padding: 16 }}><p>Loading…</p></div>;
+  }
+
+  // Already booked — show friendly message instead of slot picker
+  if (alreadyBooked) {
+    return (
+      <div style={{ padding: 16 }}>
+        <h1>Already booked</h1>
+        <p>You already have an assessment booking.</p>
+        <p>
+          <Link to="/dashboard">Go to your dashboard</Link>
+        </p>
+      </div>
+    );
   }
 
   return (
