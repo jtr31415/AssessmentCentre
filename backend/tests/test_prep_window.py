@@ -1,10 +1,8 @@
 """Tests for prep_window.py and config_helpers.py — written BEFORE implementation (TDD RED)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import pytest
-
-UTC = timezone.utc
+UTC = UTC
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +116,9 @@ class TestBuildPreview:
 
         now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
         slot = now + timedelta(days=days_out)
-        return build_preview(slot_starts_at=slot, now=now, prep_window_days=n, tz_name="Europe/London")
+        return build_preview(
+            slot_starts_at=slot, now=now, prep_window_days=n, tz_name="Europe/London"
+        )
 
     def test_build_preview_far_slot_keys_present(self):
         """build_preview returns all required keys."""
@@ -152,10 +152,12 @@ class TestBuildPreview:
         # 2026-11-03 14:00 UTC → in London (no BST in Nov) is same time
         slot = datetime(2026, 11, 3, 14, 0, tzinfo=UTC)
         now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
-        preview = build_preview(slot_starts_at=slot, now=now, prep_window_days=8, tz_name="Europe/London")
+        preview = build_preview(
+            slot_starts_at=slot, now=now, prep_window_days=8, tz_name="Europe/London"
+        )
 
         assessment_display = preview["assessment_display"]
-        # Should contain weekday abbreviation ("Tue"), day "3", month "Nov", year "2026", time "14:00"
+        # Should contain weekday ("Tue"), day "3", month "Nov", year "2026", time "14:00"
         assert "Tue" in assessment_display
         assert "3" in assessment_display
         assert "Nov" in assessment_display
@@ -168,7 +170,9 @@ class TestBuildPreview:
 
         slot = datetime(2026, 11, 3, 14, 0, tzinfo=UTC)
         now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
-        preview = build_preview(slot_starts_at=slot, now=now, prep_window_days=8, tz_name="Europe/London")
+        preview = build_preview(
+            slot_starts_at=slot, now=now, prep_window_days=8, tz_name="Europe/London"
+        )
 
         # unlock_at = slot - 8d = 2026-10-26 14:00 UTC (still BST? No, clocks go back 25 Oct 2026)
         # 25 Oct 2026 → clocks go back at 01:00 UTC. 26 Oct 14:00 UTC = 14:00 London (GMT).
@@ -203,8 +207,8 @@ class TestConfigHelpers:
 
     def test_get_config_int_returns_stored_value(self, db_session):
         """get_config_int returns the stored int when the key exists."""
-        from app.models import Config
         from app.config_helpers import get_config_int
+        from app.models import Config
 
         db_session.add(Config(key="prep_window_days", value="5"))
         db_session.commit()
@@ -221,8 +225,8 @@ class TestConfigHelpers:
 
     def test_get_config_str_returns_stored_value(self, db_session):
         """get_config_str returns the stored string when the key exists."""
-        from app.models import Config
         from app.config_helpers import get_config_str
+        from app.models import Config
 
         db_session.add(Config(key="display_timezone", value="America/New_York"))
         db_session.commit()
@@ -239,8 +243,8 @@ class TestConfigHelpers:
 
     def test_get_config_int_returns_default_when_value_is_none(self, db_session):
         """get_config_int returns the default when the row exists but value is None."""
-        from app.models import Config
         from app.config_helpers import get_config_int
+        from app.models import Config
 
         db_session.add(Config(key="prep_window_days", value=None))
         db_session.commit()
@@ -250,8 +254,8 @@ class TestConfigHelpers:
 
     def test_get_config_str_returns_default_when_value_is_none(self, db_session):
         """get_config_str returns the default when the row exists but value is None."""
-        from app.models import Config
         from app.config_helpers import get_config_str
+        from app.models import Config
 
         db_session.add(Config(key="display_timezone", value=None))
         db_session.commit()
