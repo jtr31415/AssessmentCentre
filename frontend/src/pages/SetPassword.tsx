@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 
 export default function SetPassword() {
   const [password, setP] = useState("");
   const [err, setErr] = useState("");
   const nav = useNavigate();
-  const token = new URLSearchParams(location.search).get("token") ?? "";
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") ?? "";
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
