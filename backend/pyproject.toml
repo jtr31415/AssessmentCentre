@@ -28,3 +28,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Silence the benign Starlette TestClient deprecation (it asks for httpx2, which
+# we are intentionally not adopting mid-build). Scoped to this exact message.
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:Warning",
+]
