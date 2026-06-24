@@ -226,6 +226,10 @@ export default function CandidateDashboard() {
         </div>
       )}
 
+      <div style={{ marginTop: 24 }}>
+        <Link to="/questions">Ask the assessor a question</Link>
+      </div>
+
       <button onClick={logout} style={{ marginTop: 16 }}>
         Log out
       </button>
