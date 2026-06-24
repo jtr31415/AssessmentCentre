@@ -82,7 +82,7 @@ function AccountControls({
     try {
       const res = await api.post(`/api/admin/candidates/${cand.candidate_id}/reset-password`);
       const path = (res as { set_password_path: string }).set_password_path;
-      setState((s) => ({ ...s, busy: false, link: `${location.origin}${path}` }));
+      setState((s) => ({ ...s, busy: false, link: `${window.location.origin}${path}` }));
     } catch (err) {
       setState((s) => ({ ...s, busy: false, error: (err as Error).message || "Failed." }));
     }
@@ -93,7 +93,7 @@ function AccountControls({
     try {
       const res = await api.post(`/api/admin/candidates/${cand.candidate_id}/reissue-invite`);
       const path = (res as { set_password_path: string }).set_password_path;
-      setState((s) => ({ ...s, busy: false, link: `${location.origin}${path}` }));
+      setState((s) => ({ ...s, busy: false, link: `${window.location.origin}${path}` }));
     } catch (err) {
       setState((s) => ({ ...s, busy: false, error: (err as Error).message || "Failed." }));
     }
@@ -187,7 +187,7 @@ export default function AdminDashboard() {
         {cands.map((c) => (
           <li key={c.candidate_id} style={{ marginBottom: 8 }}>
             {c.candidate_id} — {c.first_name} — {c.status}
-            {c.set_password_path && <code> {location.origin}{c.set_password_path}</code>}
+            {c.set_password_path && <code> {window.location.origin}{c.set_password_path}</code>}
             <SetApiKeyControl candidateId={c.candidate_id} />
             <AccountControls cand={c} onStatusChange={handleStatusChange} />
           </li>

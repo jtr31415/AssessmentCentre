@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 
 type ActivityRow = {
@@ -47,6 +48,7 @@ export default function AdminActivity() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 16, overflowX: "auto" }}>
+      <p><Link to="/admin">← Back to admin</Link></p>
       <h1>Activity Overview</h1>
       {loading && <p>Loading…</p>}
       {error && <p style={{ color: "red" }}>{error}</p>}
@@ -93,7 +95,7 @@ export default function AdminActivity() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5 + allFileKeys.length} style={{ ...td, color: "#888", textAlign: "center" }}>
+                <td colSpan={7 + allFileKeys.length} style={{ ...td, color: "#888", textAlign: "center" }}>
                   No activity data.
                 </td>
               </tr>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 
 type Question = {
@@ -80,6 +81,7 @@ export default function AdminQuestions() {
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
+      <p><Link to="/admin">← Back to admin</Link></p>
       <h1>Questions Queue</h1>
       {loading && <p>Loading…</p>}
       {error && <p style={{ color: "red" }}>{error}</p>}
