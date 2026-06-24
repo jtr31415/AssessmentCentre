@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import AuditLog, Booking, Candidate
+from app.models import AuditLog, Booking, Candidate, Slot
 from app.prep_window import compute_unlock_at
 from app.seed import seed_admin_and_config
 
@@ -398,3 +398,318 @@ class TestBookSlot:
         seed_admin_and_config(db_session)
         r = client.post("/api/slots/1/book")
         assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/bookings/reassign
+# ---------------------------------------------------------------------------
+
+class TestAdminReassign:
+    def _setup(self, client, db_session):
+        """Seed config, create a candidate with a booking, return useful IDs."""
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+
+        # Create two slots as admin
+        client.post("/api/auth/logout")
+        login_admin(client)
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot1_id = admin_create_slot(client, future + timedelta(hours=1), capacity=2)
+        slot2_id = admin_create_slot(client, future + timedelta(hours=10), capacity=2)
+
+        # Book slot1 as candidate
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
+        )
+        r = client.post(f"/api/slots/{slot1_id}/book")
+        assert r.status_code == 201, r.text
+
+        # Return to admin session
+        client.post("/api/auth/logout")
+        login_admin(client)
+        return candidate_id, slot1_id, slot2_id
+
+    def test_reassign_moves_booking_and_recomputes_unlock_at(self, client, db_session):
+        """Reassign moves the booking to the new slot; unlock_at is recomputed."""
+        candidate_id, slot1_id, slot2_id = self._setup(client, db_session)
+
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": candidate_id, "new_slot_id": slot2_id},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["candidate_id"] == candidate_id
+        assert data["slot_id"] == slot2_id
+        assert "unlock_at" in data
+
+        # Verify DB: booking points to new slot
+        cand_row = db_session.execute(
+            select(Candidate).where(Candidate.candidate_id == candidate_id)
+        ).scalar_one()
+        booking = db_session.execute(
+            select(Booking).where(Booking.candidate_id == cand_row.id)
+        ).scalar_one()
+        assert booking.slot_id == slot2_id
+
+        # unlock_at should be based on new slot's starts_at, not old slot
+        new_slot = db_session.get(Slot, slot2_id)
+        old_slot = db_session.get(Slot, slot1_id)
+        expected_unlock = compute_unlock_at(new_slot.starts_at, booking.booked_at, 8)
+        old_unlock = compute_unlock_at(old_slot.starts_at, booking.booked_at, 8)
+        assert abs((booking.unlock_at - expected_unlock).total_seconds()) < 2
+        # The new slot is further out so unlock_at should differ from old
+        assert abs((booking.unlock_at - old_unlock).total_seconds()) > 60
+
+    def test_reassign_old_slot_becomes_open(self, client, db_session):
+        """After reassign, the old slot should appear in /api/slots/open."""
+        candidate_id, slot1_id, slot2_id = self._setup(client, db_session)
+
+        # slot1 has capacity=2 and only 1 booking — it was open before too.
+        # Test with capacity=1 slots so we can see it becoming open.
+        # Create fresh capacity-1 slots for this test.
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot_a_id = admin_create_slot(client, future + timedelta(hours=5), capacity=1)
+        slot_b_id = admin_create_slot(client, future + timedelta(hours=6), capacity=1)
+
+        # Book slot_a as the same candidate (need fresh candidate)
+        client.post("/api/auth/logout")
+        candidate_id2 = create_and_login_candidate(client)
+        r = client.post(f"/api/slots/{slot_a_id}/book")
+        assert r.status_code == 201, r.text
+
+        # slot_a is now full; reassign as admin
+        client.post("/api/auth/logout")
+        login_admin(client)
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": candidate_id2, "new_slot_id": slot_b_id},
+        )
+        assert r.status_code == 200, r.text
+
+        # slot_a should now appear open when candidate logs in
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id2, "password": "pw-123456"},
+        )
+        r = client.get("/api/slots/open")
+        assert r.status_code == 200
+        ids = [s["id"] for s in r.json()]
+        assert slot_a_id in ids, "Old slot should be open again after reassign"
+
+    def test_reassign_into_full_slot_returns_409(self, client, db_session):
+        """Reassign into a full (capacity=1) slot → 409 'that slot is full'."""
+        seed_admin_and_config(db_session)
+
+        # Candidate A has a booking
+        cand_a_id = create_and_login_candidate(client)
+        client.post("/api/auth/logout")
+        login_admin(client)
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot1_id = admin_create_slot(client, future + timedelta(hours=1), capacity=2)
+        slot_full_id = admin_create_slot(client, future + timedelta(hours=2), capacity=1)
+
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": cand_a_id, "password": "pw-123456"},
+        )
+        r = client.post(f"/api/slots/{slot1_id}/book")
+        assert r.status_code == 201, r.text
+
+        # Candidate B fills slot_full
+        _second_candidate(client, db_session)
+        r = client.post(f"/api/slots/{slot_full_id}/book")
+        assert r.status_code == 201, r.text
+
+        # Admin tries to reassign cand_a to full slot
+        client.post("/api/auth/logout")
+        login_admin(client)
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": cand_a_id, "new_slot_id": slot_full_id},
+        )
+        assert r.status_code == 409, r.text
+        assert "full" in r.json()["detail"]
+
+    def test_reassign_unknown_candidate_returns_404(self, client, db_session):
+        """Reassign for a candidate_id that doesn't exist → 404."""
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": "DOES-NOT-EXIST", "new_slot_id": 1},
+        )
+        assert r.status_code == 404, r.text
+
+    def test_reassign_candidate_with_no_booking_returns_404(self, client, db_session):
+        """Reassign for a candidate who has no booking → 404."""
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+        client.post("/api/auth/logout")
+        login_admin(client)
+
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot_id = admin_create_slot(client, future)
+
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": candidate_id, "new_slot_id": slot_id},
+        )
+        assert r.status_code == 404, r.text
+        assert "no booking" in r.json()["detail"]
+
+    def test_reassign_unknown_new_slot_returns_404(self, client, db_session):
+        """Reassign to a slot that doesn't exist → 404."""
+        candidate_id, slot1_id, slot2_id = self._setup(client, db_session)
+
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": candidate_id, "new_slot_id": 99999},
+        )
+        assert r.status_code == 404, r.text
+
+    def test_reassign_requires_admin_auth(self, client, db_session):
+        """Reassign endpoint returns 401 for non-admin callers."""
+        seed_admin_and_config(db_session)
+        # Not logged in at all
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": "x", "new_slot_id": 1},
+        )
+        assert r.status_code == 401
+
+    def test_reassign_audit_row_exists(self, client, db_session):
+        """After reassign, an audit row with action='booking_reassign' exists."""
+        candidate_id, slot1_id, slot2_id = self._setup(client, db_session)
+
+        r = client.post(
+            "/api/admin/bookings/reassign",
+            json={"candidate_id": candidate_id, "new_slot_id": slot2_id},
+        )
+        assert r.status_code == 200, r.text
+
+        audit = db_session.execute(
+            select(AuditLog).where(AuditLog.action == "booking_reassign")
+        ).scalar_one_or_none()
+        assert audit is not None, "audit_log row for booking_reassign must exist"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/bookings/release
+# ---------------------------------------------------------------------------
+
+class TestAdminRelease:
+    def _setup_with_booking(self, client, db_session):
+        """Seed, create candidate with booking; return as admin session."""
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+
+        client.post("/api/auth/logout")
+        login_admin(client)
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot_id = admin_create_slot(client, future, capacity=1)
+
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
+        )
+        r = client.post(f"/api/slots/{slot_id}/book")
+        assert r.status_code == 201, r.text
+
+        client.post("/api/auth/logout")
+        login_admin(client)
+        return candidate_id, slot_id
+
+    def test_release_removes_booking(self, client, db_session):
+        """Release deletes the booking and returns {ok: true}."""
+        candidate_id, slot_id = self._setup_with_booking(client, db_session)
+
+        r = client.post(
+            "/api/admin/bookings/release",
+            json={"candidate_id": candidate_id},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {"ok": True}
+
+        # Booking row should be gone
+        cand_row = db_session.execute(
+            select(Candidate).where(Candidate.candidate_id == candidate_id)
+        ).scalar_one()
+        booking = db_session.execute(
+            select(Booking).where(Booking.candidate_id == cand_row.id)
+        ).scalar_one_or_none()
+        assert booking is None, "Booking should be deleted after release"
+
+    def test_release_slot_appears_open_again(self, client, db_session):
+        """After release, the freed slot appears in /api/slots/open."""
+        candidate_id, slot_id = self._setup_with_booking(client, db_session)
+
+        r = client.post(
+            "/api/admin/bookings/release",
+            json={"candidate_id": candidate_id},
+        )
+        assert r.status_code == 200, r.text
+
+        # Log in as the same candidate to check open slots
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
+        )
+        r = client.get("/api/slots/open")
+        assert r.status_code == 200
+        ids = [s["id"] for s in r.json()]
+        assert slot_id in ids, "Released slot should appear open again"
+
+    def test_release_no_booking_returns_404(self, client, db_session):
+        """Release a candidate who has no booking → 404."""
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+        client.post("/api/auth/logout")
+        login_admin(client)
+
+        r = client.post(
+            "/api/admin/bookings/release",
+            json={"candidate_id": candidate_id},
+        )
+        assert r.status_code == 404, r.text
+
+    def test_release_unknown_candidate_returns_404(self, client, db_session):
+        """Release for unknown candidate_id → 404."""
+        seed_admin_and_config(db_session)
+        login_admin(client)
+
+        r = client.post(
+            "/api/admin/bookings/release",
+            json={"candidate_id": "DOES-NOT-EXIST"},
+        )
+        assert r.status_code == 404, r.text
+
+    def test_release_requires_admin_auth(self, client, db_session):
+        """Release endpoint returns 401 for non-admin callers."""
+        seed_admin_and_config(db_session)
+        r = client.post(
+            "/api/admin/bookings/release",
+            json={"candidate_id": "x"},
+        )
+        assert r.status_code == 401
+
+    def test_release_audit_row_exists(self, client, db_session):
+        """After release, an audit row with action='booking_release' exists."""
+        candidate_id, slot_id = self._setup_with_booking(client, db_session)
+
+        r = client.post(
+            "/api/admin/bookings/release",
+            json={"candidate_id": candidate_id},
+        )
+        assert r.status_code == 200, r.text
+
+        audit = db_session.execute(
+            select(AuditLog).where(AuditLog.action == "booking_release")
+        ).scalar_one_or_none()
+        assert audit is not None, "audit_log row for booking_release must exist"

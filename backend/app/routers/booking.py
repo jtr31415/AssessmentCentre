@@ -3,6 +3,11 @@
 GET  /api/slots/open          — list open slots (booked_count < capacity)
 GET  /api/slots/{id}/preview  — prep-window preview for a slot
 POST /api/slots/{id}/book     — atomically book a slot (single-occupancy, one-per-candidate)
+
+Admin booking management endpoints.
+
+POST /api/admin/bookings/reassign  — move a candidate's booking to a different slot
+POST /api/admin/bookings/release   — delete a candidate's booking (free the slot)
 """
 
 from datetime import UTC, datetime
@@ -15,11 +20,13 @@ from sqlalchemy.orm import Session
 from app.audit import record
 from app.config_helpers import get_config_int, get_config_str
 from app.db import get_db
-from app.deps import current_candidate
+from app.deps import current_admin, current_candidate
 from app.models import Booking, Candidate, Slot
 from app.prep_window import build_preview, compute_unlock_at
+from app.schemas import ReassignRequest, ReleaseRequest
 
 router = APIRouter(prefix="/api/slots", tags=["booking"])
+admin_router = APIRouter(prefix="/api/admin/bookings", tags=["admin-booking"])
 
 
 @router.get("/open")
@@ -134,3 +141,116 @@ def book_slot(
         "unlock_at": unlock_at,
         "booked_at": now,
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin booking management
+# ---------------------------------------------------------------------------
+
+@admin_router.post("/reassign")
+def reassign_booking(
+    body: ReassignRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Move a candidate's existing booking to a different slot.
+
+    - 404 if candidate_id not found.
+    - 404 if the candidate has no booking.
+    - 404 if the new slot does not exist.
+    - 409 if the new slot is at capacity (excluding this candidate's own booking).
+    Recomputes unlock_at using the new slot's starts_at and the original booked_at.
+    """
+    # 1. Look up candidate by candidate_id string.
+    cand = db.execute(
+        select(Candidate).where(Candidate.candidate_id == body.candidate_id)
+    ).scalar_one_or_none()
+    if cand is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="candidate not found")
+
+    # 2. Look up their booking.
+    booking = db.execute(
+        select(Booking).where(Booking.candidate_id == cand.id)
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="candidate has no booking"
+        )
+
+    # 3. Lock the new slot row exclusively within this transaction.
+    new_slot = db.execute(
+        select(Slot).where(Slot.id == body.new_slot_id).with_for_update()
+    ).scalar_one_or_none()
+    if new_slot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slot not found")
+
+    # 4. Capacity check — exclude this candidate's own booking if already on this slot.
+    booked_count = (
+        db.query(Booking)
+        .filter(Booking.slot_id == body.new_slot_id, Booking.candidate_id != cand.id)
+        .count()
+    )
+    if booked_count >= new_slot.capacity:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="that slot is full"
+        )
+
+    # 5. Recompute unlock_at using the new slot's starts_at and the ORIGINAL booked_at.
+    prep_window_days = get_config_int(db, "prep_window_days", 8)
+    new_unlock_at = compute_unlock_at(new_slot.starts_at, booking.booked_at, prep_window_days)
+
+    # 6. Update and commit.
+    booking.slot_id = body.new_slot_id
+    booking.unlock_at = new_unlock_at
+    db.commit()
+
+    # 7. Audit.
+    record(
+        db,
+        actor="admin",
+        action="booking_reassign",
+        detail=f"{body.candidate_id} -> slot {body.new_slot_id}",
+    )
+
+    return {
+        "candidate_id": body.candidate_id,
+        "slot_id": body.new_slot_id,
+        "unlock_at": new_unlock_at,
+    }
+
+
+@admin_router.post("/release")
+def release_booking(
+    body: ReleaseRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Delete a candidate's booking, freeing the slot.
+
+    - 404 if candidate_id not found.
+    - 404 if the candidate has no booking.
+    """
+    # 1. Look up candidate.
+    cand = db.execute(
+        select(Candidate).where(Candidate.candidate_id == body.candidate_id)
+    ).scalar_one_or_none()
+    if cand is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="candidate not found")
+
+    # 2. Look up their booking.
+    booking = db.execute(
+        select(Booking).where(Booking.candidate_id == cand.id)
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="candidate has no booking"
+        )
+
+    # 3. Delete and commit.
+    db.delete(booking)
+    db.commit()
+
+    # 4. Audit.
+    record(db, actor="admin", action="booking_release", detail=body.candidate_id)
+
+    return {"ok": True}
