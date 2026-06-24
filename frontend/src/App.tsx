@@ -4,6 +4,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminSlots from "./pages/AdminSlots";
 import CandidateLogin from "./pages/CandidateLogin";
 import SetPassword from "./pages/SetPassword";
+import CandidateBooking from "./pages/CandidateBooking";
 import CandidateDashboard from "./pages/CandidateDashboard";
 import Privacy from "./pages/Privacy";
 
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/login" element={<CandidateLogin />} />
         <Route path="/set-password" element={<SetPassword />} />
         <Route path="/dashboard" element={<CandidateDashboard />} />
+        <Route path="/book" element={<CandidateBooking />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<CandidateLogin />} />
       </Routes>

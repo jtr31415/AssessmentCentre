@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.routers import admin, auth, booking, public, slots
 from app.routers.booking import admin_router as booking_admin_router
+from app.routers.booking import me_router as booking_me_router
 from app.seed import seed_admin_and_config
 
 
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(slots.router)
     app.include_router(booking.router)
     app.include_router(booking_admin_router)
+    app.include_router(booking_me_router)
     return app
 
 

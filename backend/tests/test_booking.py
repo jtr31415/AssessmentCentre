@@ -713,3 +713,107 @@ class TestAdminRelease:
             select(AuditLog).where(AuditLog.action == "booking_release")
         ).scalar_one_or_none()
         assert audit is not None, "audit_log row for booking_release must exist"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/me/booking
+# ---------------------------------------------------------------------------
+
+class TestMyBooking:
+    def test_no_booking_returns_has_booking_false(self, client, db_session):
+        """Candidate with no booking → {has_booking: false}."""
+        seed_admin_and_config(db_session)
+        create_and_login_candidate(client)
+
+        r = client.get("/api/me/booking")
+        assert r.status_code == 200, r.text
+        assert r.json() == {"has_booking": False}
+
+    def test_after_booking_returns_has_booking_true_with_correct_fields(self, client, db_session):
+        """After booking, response has has_booking=true, slot_starts_at, unlock_at."""
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+
+        # Create slot + book it
+        client.post("/api/auth/logout")
+        login_admin(client)
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot_id = admin_create_slot(client, future, capacity=1)
+
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
+        )
+        r = client.post(f"/api/slots/{slot_id}/book")
+        assert r.status_code == 201, r.text
+
+        r = client.get("/api/me/booking")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["has_booking"] is True
+        assert "slot_starts_at" in data
+        assert "unlock_at" in data
+        assert "unlocked" in data
+
+    def test_unlocked_false_when_unlock_at_is_future(self, client, db_session):
+        """With unlock_at 20 days in the future, unlocked should be False."""
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+
+        client.post("/api/auth/logout")
+        login_admin(client)
+        future = datetime.now(UTC) + timedelta(days=20)
+        slot_id = admin_create_slot(client, future, capacity=1)
+
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
+        )
+        client.post(f"/api/slots/{slot_id}/book")
+
+        r = client.get("/api/me/booking")
+        assert r.status_code == 200, r.text
+        assert r.json()["unlocked"] is False
+
+    def test_unlocked_true_when_unlock_at_is_past(self, client, db_session):
+        """Booking with past unlock_at → unlocked=True."""
+        from sqlalchemy import select as sa_select
+        seed_admin_and_config(db_session)
+        candidate_id = create_and_login_candidate(client)
+
+        client.post("/api/auth/logout")
+        login_admin(client)
+        # Slot 2 days away → unlock_at == now (unlocks immediately)
+        future = datetime.now(UTC) + timedelta(days=2)
+        slot_id = admin_create_slot(client, future, capacity=1)
+
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
+        )
+        client.post(f"/api/slots/{slot_id}/book")
+
+        # Force unlock_at to a past time in DB
+        from app.models import Booking as BookModel
+        from app.models import Candidate as CandModel
+        cand_row = db_session.execute(
+            sa_select(CandModel).where(CandModel.candidate_id == candidate_id)
+        ).scalar_one()
+        booking = db_session.execute(
+            sa_select(BookModel).where(BookModel.candidate_id == cand_row.id)
+        ).scalar_one()
+        booking.unlock_at = datetime.now(UTC) - timedelta(hours=1)
+        db_session.commit()
+
+        r = client.get("/api/me/booking")
+        assert r.status_code == 200, r.text
+        assert r.json()["unlocked"] is True
+
+    def test_requires_candidate_auth(self, client, db_session):
+        """GET /api/me/booking returns 401 when not authenticated."""
+        seed_admin_and_config(db_session)
+        r = client.get("/api/me/booking")
+        assert r.status_code == 401

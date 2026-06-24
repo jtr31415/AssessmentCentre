@@ -27,6 +27,7 @@ from app.schemas import ReassignRequest, ReleaseRequest
 
 router = APIRouter(prefix="/api/slots", tags=["booking"])
 admin_router = APIRouter(prefix="/api/admin/bookings", tags=["admin-booking"])
+me_router = APIRouter(prefix="/api/me", tags=["me"])
 
 
 @router.get("/open")
@@ -254,3 +255,30 @@ def release_booking(
     record(db, actor="admin", action="booking_release", detail=body.candidate_id)
 
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Candidate: read own booking
+# ---------------------------------------------------------------------------
+
+@me_router.get("/booking")
+def my_booking(
+    db: Session = Depends(get_db),  # noqa: B008
+    cand: Candidate = Depends(current_candidate),  # noqa: B008
+):
+    """Return the authenticated candidate's booking, or has_booking=false."""
+    booking = (
+        db.execute(select(Booking).where(Booking.candidate_id == cand.id))
+        .scalar_one_or_none()
+    )
+    if booking is None:
+        return {"has_booking": False}
+
+    slot = db.get(Slot, booking.slot_id)
+    now = datetime.now(UTC)
+    return {
+        "has_booking": True,
+        "slot_starts_at": slot.starts_at.isoformat(),
+        "unlock_at": booking.unlock_at.isoformat(),
+        "unlocked": now >= booking.unlock_at,
+    }
