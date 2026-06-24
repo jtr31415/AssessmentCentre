@@ -81,6 +81,75 @@ def set_api_key(
     return {"ok": True}
 
 
+def _issue_set_password_token(cand: Candidate) -> str:
+    """Mint a fresh 24-hour set-password token on *cand* and return the raw token."""
+    token = generate_token()
+    cand.password_set_token = token
+    cand.password_set_token_expires_at = datetime.now(UTC) + timedelta(hours=24)
+    return token
+
+
+def _get_candidate_or_404(candidate_id: str, db: Session) -> Candidate:
+    cand = db.execute(
+        select(Candidate).where(Candidate.candidate_id == candidate_id)
+    ).scalar_one_or_none()
+    if cand is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    return cand
+
+
+@router.post("/candidates/{candidate_id}/reset-password")
+def reset_password(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    token = _issue_set_password_token(cand)
+    db.commit()
+    record(db, actor="admin", action="password_reset", detail=candidate_id)
+    return {"set_password_path": _set_password_path(token)}
+
+
+@router.post("/candidates/{candidate_id}/reissue-invite")
+def reissue_invite(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    token = _issue_set_password_token(cand)
+    db.commit()
+    record(db, actor="admin", action="invite_reissue", detail=candidate_id)
+    return {"set_password_path": _set_password_path(token)}
+
+
+@router.post("/candidates/{candidate_id}/disable")
+def disable_candidate(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    cand.status = "disabled"
+    db.commit()
+    record(db, actor="admin", action="account_disable", detail=candidate_id)
+    return {"status": cand.status}
+
+
+@router.post("/candidates/{candidate_id}/enable")
+def enable_candidate(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    cand.status = "active" if cand.password_hash else "invited"
+    db.commit()
+    record(db, actor="admin", action="account_enable", detail=candidate_id)
+    return {"status": cand.status}
+
+
 @router.delete("/candidates/{candidate_id}/api-key")
 def clear_api_key(
     candidate_id: str,
