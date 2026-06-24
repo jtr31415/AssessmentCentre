@@ -52,8 +52,10 @@ def submit_question(
     """Candidate submits a question. Rejects empty / whitespace-only body."""
     stripped = body.body.strip()
     if not stripped:
+        # Use the integer literal: the Starlette HTTP_422_* constant name is
+        # deprecated in the installed version and accessing it warns.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail="body must not be empty",
         )
 
