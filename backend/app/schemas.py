@@ -43,3 +43,11 @@ class ReleaseRequest(BaseModel):
 
 class ApiKeyPaste(BaseModel):
     api_key: str
+
+
+class QuestionCreate(BaseModel):
+    body: str
+
+
+class AnswerCreate(BaseModel):
+    answer: str
