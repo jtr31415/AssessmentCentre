@@ -2,49 +2,15 @@
 
 TDD: written BEFORE implementation (RED first).
 
-DB on port 5433.
+Uses the shared ``db_session`` fixture from conftest.py (do NOT define a local
+engine fixture — a module-scoped engine that drops_all on teardown would destroy
+the shared test schema for every later test module).
 """
 
-# ---------------------------------------------------------------------------
-# Test DB setup (port 5433 as specified)
-# ---------------------------------------------------------------------------
-import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-import app.models  # noqa: F401  (register tables)
-from app.db import Base
 from app.models import Booking, Candidate, Slot
-
-TEST_DB_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+psycopg://app:app@localhost:5433/app_test"
-)
-
-
-@pytest.fixture(scope="module")
-def engine():
-    eng = create_engine(TEST_DB_URL)
-    Base.metadata.drop_all(eng)
-    Base.metadata.create_all(eng)
-    yield eng
-    Base.metadata.drop_all(eng)
-
-
-@pytest.fixture
-def db(engine):
-    TestSession = sessionmaker(bind=engine, expire_on_commit=False)
-    session = TestSession()
-    yield session
-    session.rollback()
-    for table in reversed(Base.metadata.sorted_tables):
-        session.execute(table.delete())
-    session.commit()
-    session.close()
-
 
 # ---------------------------------------------------------------------------
 # Helpers to build model instances
@@ -86,45 +52,45 @@ def _make_booking(db, candidate: Candidate, slot: Slot, unlock_at: datetime) -> 
 
 
 class TestIsUnlocked:
-    def test_false_when_candidate_has_no_booking(self, db):
+    def test_false_when_candidate_has_no_booking(self, db_session):
         """is_unlocked returns False when the candidate has no booking at all."""
         from app.content_access import is_unlocked
 
-        cand = _make_candidate(db, status="active")
-        assert is_unlocked(db, cand) is False
+        cand = _make_candidate(db_session, status="active")
+        assert is_unlocked(db_session, cand) is False
 
-    def test_false_when_booked_but_unlock_at_is_future(self, db):
+    def test_false_when_booked_but_unlock_at_is_future(self, db_session):
         """is_unlocked returns False when there is a booking but unlock_at is in the future."""
         from app.content_access import is_unlocked
 
-        cand = _make_candidate(db, status="active")
-        slot = _make_slot(db)
+        cand = _make_candidate(db_session, status="active")
+        slot = _make_slot(db_session)
         future_unlock = datetime.now(UTC) + timedelta(hours=5)
-        _make_booking(db, cand, slot, future_unlock)
+        _make_booking(db_session, cand, slot, future_unlock)
 
-        assert is_unlocked(db, cand) is False
+        assert is_unlocked(db_session, cand) is False
 
-    def test_false_when_status_not_active_even_if_booked_and_past(self, db):
+    def test_false_when_status_not_active_even_if_booked_and_past(self, db_session):
         """is_unlocked returns False when status != 'active', even if booking + past unlock_at."""
         from app.content_access import is_unlocked
 
-        cand = _make_candidate(db, status="invited")
-        slot = _make_slot(db)
+        cand = _make_candidate(db_session, status="invited")
+        slot = _make_slot(db_session)
         past_unlock = datetime.now(UTC) - timedelta(hours=1)
-        _make_booking(db, cand, slot, past_unlock)
+        _make_booking(db_session, cand, slot, past_unlock)
 
-        assert is_unlocked(db, cand) is False
+        assert is_unlocked(db_session, cand) is False
 
-    def test_true_when_active_booked_and_unlock_at_in_past(self, db):
+    def test_true_when_active_booked_and_unlock_at_in_past(self, db_session):
         """is_unlocked returns True when active + has booking + unlock_at is past."""
         from app.content_access import is_unlocked
 
-        cand = _make_candidate(db, status="active")
-        slot = _make_slot(db)
+        cand = _make_candidate(db_session, status="active")
+        slot = _make_slot(db_session)
         past_unlock = datetime.now(UTC) - timedelta(hours=1)
-        _make_booking(db, cand, slot, past_unlock)
+        _make_booking(db_session, cand, slot, past_unlock)
 
-        assert is_unlocked(db, cand) is True
+        assert is_unlocked(db_session, cand) is True
 
 
 # ---------------------------------------------------------------------------
