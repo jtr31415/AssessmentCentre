@@ -5,7 +5,7 @@ from app.db import get_db
 from app.models import Admin, Candidate
 
 
-def current_admin(request: Request, db: Session = Depends(get_db)) -> Admin:
+def current_admin(request: Request, db: Session = Depends(get_db)) -> Admin:  # noqa: B008
     if request.session.get("role") != "admin":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "admin auth required")
     admin = db.get(Admin, request.session.get("admin_id"))
@@ -14,7 +14,7 @@ def current_admin(request: Request, db: Session = Depends(get_db)) -> Admin:
     return admin
 
 
-def current_candidate(request: Request, db: Session = Depends(get_db)) -> Candidate:
+def current_candidate(request: Request, db: Session = Depends(get_db)) -> Candidate:  # noqa: B008
     if request.session.get("role") != "candidate":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "candidate auth required")
     cand = db.get(Candidate, request.session.get("candidate_pk"))

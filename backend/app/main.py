@@ -21,7 +21,12 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Candidate Assessment Platform", lifespan=lifespan)
-    app.add_middleware(SessionMiddleware, secret_key=get_settings().session_secret, https_only=False, same_site="lax")
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=get_settings().session_secret,
+        https_only=False,
+        same_site="lax",
+    )
     app.include_router(public.router)
     app.include_router(auth.router)
     app.include_router(admin.router)

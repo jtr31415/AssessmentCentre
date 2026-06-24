@@ -14,7 +14,10 @@ _DEFAULT_CONFIG = {
 def seed_admin_and_config(db: Session) -> None:
     s = get_settings()
     if not db.execute(select(Admin).filter_by(username=s.initial_admin_username)).first():
-        db.add(Admin(username=s.initial_admin_username, password_hash=hash_password(s.initial_admin_password)))
+        db.add(Admin(
+            username=s.initial_admin_username,
+            password_hash=hash_password(s.initial_admin_password),
+        ))
     existing = set(db.execute(select(Config.key)).scalars().all())
     seeds = {
         "prep_window_days": str(s.prep_window_days),

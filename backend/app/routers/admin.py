@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
@@ -22,8 +22,8 @@ def _set_password_path(token: str) -> str:
 @router.post("/candidates", status_code=status.HTTP_201_CREATED)
 def create_candidate(
     body: CreateCandidate,
-    db: Session = Depends(get_db),
-    _: object = Depends(current_admin),
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
 ):
     cid = allocate_candidate_id(db)
     token = generate_token()
@@ -32,7 +32,7 @@ def create_candidate(
         first_name=body.first_name,
         status="invited",
         password_set_token=token,
-        password_set_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        password_set_token_expires_at=datetime.now(UTC) + timedelta(hours=24),
     )
     db.add(cand)
     db.commit()
@@ -46,7 +46,7 @@ def create_candidate(
 
 
 @router.get("/candidates")
-def list_candidates(db: Session = Depends(get_db), _: object = Depends(current_admin)):
+def list_candidates(db: Session = Depends(get_db), _: object = Depends(current_admin)):  # noqa: B008
     rows = db.execute(select(Candidate).order_by(Candidate.candidate_id)).scalars().all()
     return [
         {

@@ -5,9 +5,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import app.models  # noqa: F401  (register tables)
 from app.db import Base, get_db
 from app.main import create_app
-import app.models  # noqa: F401  (register tables)
 
 TEST_DB_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://app:app@localhost:5432/app_test"

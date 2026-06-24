@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/admin/login")
-def admin_login(body: AdminLogin, request: Request, db: Session = Depends(get_db)):
+def admin_login(body: AdminLogin, request: Request, db: Session = Depends(get_db)):  # noqa: B008
     admin = db.execute(select(Admin).filter_by(username=body.username)).scalar_one_or_none()
     if not admin or not verify_password(body.password, admin.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
@@ -34,16 +34,19 @@ def me(request: Request):
     role = request.session.get("role")
     if not role:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
-    return {"role": role, "id": request.session.get("admin_id") or request.session.get("candidate_pk")}
+    return {
+        "role": role,
+        "id": request.session.get("admin_id") or request.session.get("candidate_pk"),
+    }
 
 
 @router.post("/candidate/set-password")
-def candidate_set_password(body: SetPassword, db: Session = Depends(get_db)):
+def candidate_set_password(body: SetPassword, db: Session = Depends(get_db)):  # noqa: B008
     cand = db.execute(
         select(Candidate).filter_by(password_set_token=body.token)
     ).scalar_one_or_none()
     expires = cand.password_set_token_expires_at if cand else None
-    if not cand or expires is None or expires < datetime.now(timezone.utc):
+    if not cand or expires is None or expires < datetime.now(UTC):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid or expired token")
     cand.password_hash = hash_password(body.password)
     cand.status = "active"
@@ -55,7 +58,7 @@ def candidate_set_password(body: SetPassword, db: Session = Depends(get_db)):
 
 
 @router.post("/candidate/login")
-def candidate_login(body: CandidateLogin, request: Request, db: Session = Depends(get_db)):
+def candidate_login(body: CandidateLogin, request: Request, db: Session = Depends(get_db)):  # noqa: B008
     cand = db.execute(
         select(Candidate).filter_by(candidate_id=body.candidate_id)
     ).scalar_one_or_none()
