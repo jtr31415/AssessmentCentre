@@ -76,7 +76,13 @@ def resolve_path(file_key: str, content_dir: str) -> Path | None:
     if entry is None:
         return None
 
-    path = Path(content_dir) / entry["filename"]
+    base = Path(content_dir).resolve()
+    path = (base / entry["filename"]).resolve()
+    # Defense-in-depth: even though only hard-coded manifest filenames are used,
+    # reject anything that resolves outside content_dir (guards a future careless
+    # filename containing a separator or '..').
+    if base != path.parent and base not in path.parents:
+        return None
     if path.exists() and path.is_file():
         return path
     return None
