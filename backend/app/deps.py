@@ -20,4 +20,8 @@ def current_candidate(request: Request, db: Session = Depends(get_db)) -> Candid
     cand = db.get(Candidate, request.session.get("candidate_pk"))
     if not cand:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "candidate auth required")
+    # Re-check status on every request: a candidate disabled AFTER login must be
+    # cut off immediately, not just blocked from new logins (in-flight session).
+    if cand.status != "active":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account is not active")
     return cand

@@ -56,31 +56,140 @@ function SetApiKeyControl({ candidateId }: { candidateId: string }) {
   );
 }
 
+interface AccountControlsState {
+  busy: boolean;
+  link: string;
+  status: string;
+  error: string;
+}
+
+function AccountControls({
+  cand,
+  onStatusChange,
+}: {
+  cand: Cand;
+  onStatusChange: (candidateId: string, newStatus: string) => void;
+}) {
+  const [state, setState] = useState<AccountControlsState>({
+    busy: false,
+    link: "",
+    status: "",
+    error: "",
+  });
+
+  async function resetPassword() {
+    setState((s) => ({ ...s, busy: true, link: "", status: "", error: "" }));
+    try {
+      const res = await api.post(`/api/admin/candidates/${cand.candidate_id}/reset-password`);
+      const path = (res as { set_password_path: string }).set_password_path;
+      setState((s) => ({ ...s, busy: false, link: `${window.location.origin}${path}` }));
+    } catch (err) {
+      setState((s) => ({ ...s, busy: false, error: (err as Error).message || "Failed." }));
+    }
+  }
+
+  async function reissueInvite() {
+    setState((s) => ({ ...s, busy: true, link: "", status: "", error: "" }));
+    try {
+      const res = await api.post(`/api/admin/candidates/${cand.candidate_id}/reissue-invite`);
+      const path = (res as { set_password_path: string }).set_password_path;
+      setState((s) => ({ ...s, busy: false, link: `${window.location.origin}${path}` }));
+    } catch (err) {
+      setState((s) => ({ ...s, busy: false, error: (err as Error).message || "Failed." }));
+    }
+  }
+
+  async function toggleDisable() {
+    const endpoint = cand.status === "disabled" ? "enable" : "disable";
+    setState((s) => ({ ...s, busy: true, link: "", status: "", error: "" }));
+    try {
+      const res = await api.post(`/api/admin/candidates/${cand.candidate_id}/${endpoint}`);
+      const newStatus = (res as { status: string }).status;
+      setState((s) => ({ ...s, busy: false, status: `Status: ${newStatus}` }));
+      onStatusChange(cand.candidate_id, newStatus);
+    } catch (err) {
+      setState((s) => ({ ...s, busy: false, error: (err as Error).message || "Failed." }));
+    }
+  }
+
+  const isInvited = cand.status === "invited";
+  const isDisabled = cand.status === "disabled";
+
+  return (
+    <span style={{ marginLeft: 12, fontSize: 13 }}>
+      <button onClick={resetPassword} disabled={state.busy} style={{ marginRight: 4 }}>
+        Reset password
+      </button>
+      {isInvited && (
+        <button onClick={reissueInvite} disabled={state.busy} style={{ marginRight: 4 }}>
+          Re-issue invite
+        </button>
+      )}
+      <button onClick={toggleDisable} disabled={state.busy} style={{ marginRight: 4 }}>
+        {isDisabled ? "Enable" : "Disable"}
+      </button>
+      {state.link && (
+        <span style={{ marginLeft: 4 }}>
+          Link:{" "}
+          <code
+            style={{ background: "#f0f0f0", padding: "1px 4px", cursor: "pointer", fontSize: 12 }}
+            onClick={() => navigator.clipboard.writeText(state.link)}
+            title="Click to copy"
+          >
+            {state.link}
+          </code>
+        </span>
+      )}
+      {state.status && <span style={{ color: "green", marginLeft: 4 }}>{state.status}</span>}
+      {state.error && <span style={{ color: "red", marginLeft: 4 }}>{state.error}</span>}
+    </span>
+  );
+}
+
 export default function AdminDashboard() {
   const [cands, setCands] = useState<Cand[]>([]);
   const [name, setName] = useState("");
-  async function load() { setCands(await api.get("/api/admin/candidates")); }
+
+  async function load() {
+    setCands(await api.get("/api/admin/candidates"));
+  }
+
   useEffect(() => { load(); }, []);
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     await api.post("/api/admin/candidates", { first_name: name });
     setName("");
     load();
   }
+
+  function handleStatusChange(candidateId: string, newStatus: string) {
+    setCands((prev) =>
+      prev.map((c) => (c.candidate_id === candidateId ? { ...c, status: newStatus } : c))
+    );
+  }
+
   return (
     <div>
       <h1>Candidates</h1>
-      <p><Link to="/admin/slots">Manage slots</Link></p>
+      <p>
+        <Link to="/admin/slots">Manage slots</Link>
+        {" · "}
+        <Link to="/admin/questions">Questions queue</Link>
+        {" · "}
+        <Link to="/admin/activity">Activity overview</Link>
+      </p>
       <form onSubmit={create}>
         <input placeholder="first name" value={name} onChange={(e) => setName(e.target.value)} />
         <button>Create</button>
       </form>
       <ul>
         {cands.map((c) => (
-          <li key={c.candidate_id}>
+          <li key={c.candidate_id} style={{ marginBottom: 8 }}>
             {c.candidate_id} — {c.first_name} — {c.status}
-            {c.set_password_path && <code> {location.origin}{c.set_password_path}</code>}
+            {c.set_password_path && <code> {window.location.origin}{c.set_password_path}</code>}
             <SetApiKeyControl candidateId={c.candidate_id} />
+            <AccountControls cand={c} onStatusChange={handleStatusChange} />
           </li>
         ))}
       </ul>

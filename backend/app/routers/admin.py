@@ -1,14 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit import record
 from app.candidate_ids import allocate_candidate_id
+from app.content_manifest import MANIFEST
 from app.db import get_db
 from app.deps import current_admin
-from app.models import Candidate
+from app.models import AuditLog, Booking, Candidate, DownloadEvent, Question, Slot
 from app.schemas import ApiKeyPaste, CreateCandidate
 from app.security import encrypt_secret, generate_token
 
@@ -79,6 +80,151 @@ def set_api_key(
     # Audit: log only the candidate_id — NEVER the key itself
     record(db, actor="admin", action="api_key_set", detail=candidate_id)
     return {"ok": True}
+
+
+def _issue_set_password_token(cand: Candidate) -> str:
+    """Mint a fresh 24-hour set-password token on *cand* and return the raw token."""
+    token = generate_token()
+    cand.password_set_token = token
+    cand.password_set_token_expires_at = datetime.now(UTC) + timedelta(hours=24)
+    return token
+
+
+def _get_candidate_or_404(candidate_id: str, db: Session) -> Candidate:
+    cand = db.execute(
+        select(Candidate).where(Candidate.candidate_id == candidate_id)
+    ).scalar_one_or_none()
+    if cand is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    return cand
+
+
+@router.post("/candidates/{candidate_id}/reset-password")
+def reset_password(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    token = _issue_set_password_token(cand)
+    db.commit()
+    record(db, actor="admin", action="password_reset", detail=candidate_id)
+    return {"set_password_path": _set_password_path(token)}
+
+
+@router.post("/candidates/{candidate_id}/reissue-invite")
+def reissue_invite(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    token = _issue_set_password_token(cand)
+    db.commit()
+    record(db, actor="admin", action="invite_reissue", detail=candidate_id)
+    return {"set_password_path": _set_password_path(token)}
+
+
+@router.post("/candidates/{candidate_id}/disable")
+def disable_candidate(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    cand.status = "disabled"
+    db.commit()
+    record(db, actor="admin", action="account_disable", detail=candidate_id)
+    return {"status": cand.status}
+
+
+@router.post("/candidates/{candidate_id}/enable")
+def enable_candidate(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = _get_candidate_or_404(candidate_id, db)
+    cand.status = "active" if cand.password_hash else "invited"
+    db.commit()
+    record(db, actor="admin", action="account_enable", detail=candidate_id)
+    return {"status": cand.status}
+
+
+@router.get("/activity")
+def get_activity(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Return one monitoring row per candidate, ordered by candidate_id."""
+    manifest_keys = [entry["file_key"] for entry in MANIFEST]
+
+    candidates = (
+        db.execute(select(Candidate).order_by(Candidate.candidate_id)).scalars().all()
+    )
+
+    rows = []
+    for cand in candidates:
+        # Booking + slot
+        booking = db.execute(
+            select(Booking).where(Booking.candidate_id == cand.id)
+        ).scalar_one_or_none()
+
+        if booking:
+            slot = db.get(Slot, booking.slot_id)
+            slot_starts_at = slot.starts_at.isoformat() if slot else None
+            unlock_at = booking.unlock_at.isoformat()
+        else:
+            slot_starts_at = None
+            unlock_at = None
+
+        # has_logged_in
+        login_exists = db.execute(
+            select(AuditLog).where(
+                AuditLog.actor == cand.candidate_id,
+                AuditLog.action == "login",
+            )
+        ).first()
+
+        # key_revealed
+        reveal_exists = db.execute(
+            select(AuditLog).where(
+                AuditLog.actor == cand.candidate_id,
+                AuditLog.action == "api_key_reveal",
+            )
+        ).first()
+
+        # downloads — latest downloaded_at per file_key
+        download_rows = db.execute(
+            select(DownloadEvent.file_key, func.max(DownloadEvent.downloaded_at).label("latest"))
+            .where(DownloadEvent.candidate_id == cand.id)
+            .group_by(DownloadEvent.file_key)
+        ).all()
+        download_map = {row.file_key: row.latest for row in download_rows}
+        downloads = {
+            key: (download_map[key].isoformat() if key in download_map else None)
+            for key in manifest_keys
+        }
+
+        # question_count
+        question_count = db.execute(
+            select(func.count(Question.id)).where(Question.candidate_id == cand.id)
+        ).scalar()
+
+        rows.append({
+            "candidate_id": cand.candidate_id,
+            "first_name": cand.first_name,
+            "status": cand.status,
+            "has_booking": booking is not None,
+            "slot_starts_at": slot_starts_at,
+            "unlock_at": unlock_at,
+            "has_logged_in": login_exists is not None,
+            "downloads": downloads,
+            "key_revealed": reveal_exists is not None,
+            "question_count": question_count,
+        })
+
+    return rows
 
 
 @router.delete("/candidates/{candidate_id}/api-key")
