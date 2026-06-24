@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 
 type Cand = { candidate_id: string; first_name: string; status: string; set_password_path: string | null };
@@ -17,6 +18,7 @@ export default function AdminDashboard() {
   return (
     <div>
       <h1>Candidates</h1>
+      <p><Link to="/admin/slots">Manage slots</Link></p>
       <form onSubmit={create}>
         <input placeholder="first name" value={name} onChange={(e) => setName(e.target.value)} />
         <button>Create</button>

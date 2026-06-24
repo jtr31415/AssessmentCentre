@@ -1,6 +1,7 @@
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminSlots from "./pages/AdminSlots";
 import CandidateLogin from "./pages/CandidateLogin";
 import SetPassword from "./pages/SetPassword";
 import CandidateDashboard from "./pages/CandidateDashboard";
@@ -12,6 +13,7 @@ export default function App() {
       <Routes>
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin/slots" element={<AdminSlots />} />
         <Route path="/login" element={<CandidateLogin />} />
         <Route path="/set-password" element={<SetPassword />} />
         <Route path="/dashboard" element={<CandidateDashboard />} />
