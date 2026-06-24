@@ -5,6 +5,10 @@ Tests for admin account management endpoints:
   POST /api/admin/candidates/{candidate_id}/disable
   POST /api/admin/candidates/{candidate_id}/enable
 """
+from fastapi.testclient import TestClient
+
+from app.db import get_db
+from app.main import create_app
 from app.models import AuditLog
 from app.seed import seed_admin_and_config
 
@@ -266,3 +270,52 @@ def test_enable_requires_admin(client, db_session):
     client.post("/api/auth/logout")
     r = client.post(f"/api/admin/candidates/{cid}/enable")
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# security: live session cut-off on disable
+# ---------------------------------------------------------------------------
+
+
+def test_disabled_candidate_live_session_is_rejected(db_session):
+    """Candidate disabled by admin after login must get 401 on their live session.
+
+    Two separate TestClient instances are used so admin and candidate sessions
+    don't share the same cookie jar — otherwise the admin login would overwrite
+    the candidate's session cookie.
+    """
+    seed_admin_and_config(db_session)
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    cand_client = TestClient(app)
+    admin_client = TestClient(app)
+
+    # --- Admin creates candidate and we extract the set-password token ---
+    admin_client.post("/api/auth/admin/login", json={"username": "admin", "password": "changeme"})
+    data = admin_client.post("/api/admin/candidates", json={"first_name": "Reg"}).json()
+    cid = data["candidate_id"]
+    token = extract_token(data["set_password_path"])
+
+    # --- Candidate sets password and logs in (establishing a live session) ---
+    cand_client.post(
+        "/api/auth/candidate/set-password",
+        json={"token": token, "password": "pw-Testing1"},
+    )
+    li = cand_client.post(
+        "/api/auth/candidate/login",
+        json={"candidate_id": cid, "password": "pw-Testing1"},
+    )
+    assert li.status_code == 200
+
+    # Confirm the live session is valid before disabling
+    r_before = cand_client.get("/api/me/questions")
+    assert r_before.status_code == 200
+
+    # --- Admin disables the candidate (via a separate client / cookie jar) ---
+    admin_client.post(f"/api/admin/candidates/{cid}/disable")
+
+    # --- Same candidate session (no re-login) must now be rejected ---
+    r_after = cand_client.get("/api/me/questions")
+    assert r_after.status_code == 401
