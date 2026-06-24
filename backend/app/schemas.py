@@ -39,3 +39,7 @@ class ReassignRequest(BaseModel):
 
 class ReleaseRequest(BaseModel):
     candidate_id: str
+
+
+class ApiKeyPaste(BaseModel):
+    api_key: str

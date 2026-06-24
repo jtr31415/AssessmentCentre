@@ -5,7 +5,12 @@ async function request(method: string, path: string, body?: unknown) {
     credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error((body as { detail?: string }).detail || res.statusText) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -13,5 +18,6 @@ export const api = {
   get: (p: string) => request("GET", p),
   post: (p: string, b?: unknown) => request("POST", p, b),
   patch: (p: string, b?: unknown) => request("PATCH", p, b),
+  put: (p: string, b?: unknown) => request("PUT", p, b),
   del: (p: string) => request("DELETE", p),
 };

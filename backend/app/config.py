@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     initial_admin_password: str = "changeme"
     prep_window_days: int = 8
     display_timezone: str = "Europe/London"
+    content_dir: str = "content"
 
 
 @lru_cache

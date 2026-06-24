@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,8 +9,8 @@ from app.candidate_ids import allocate_candidate_id
 from app.db import get_db
 from app.deps import current_admin
 from app.models import Candidate
-from app.schemas import CreateCandidate
-from app.security import generate_token
+from app.schemas import ApiKeyPaste, CreateCandidate
+from app.security import encrypt_secret, generate_token
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -60,3 +60,40 @@ def list_candidates(db: Session = Depends(get_db), _: object = Depends(current_a
         }
         for c in rows
     ]
+
+
+@router.put("/candidates/{candidate_id}/api-key")
+def set_api_key(
+    candidate_id: str,
+    body: ApiKeyPaste,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = db.execute(
+        select(Candidate).where(Candidate.candidate_id == candidate_id)
+    ).scalar_one_or_none()
+    if cand is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    cand.api_key_encrypted = encrypt_secret(body.api_key)
+    db.commit()
+    # Audit: log only the candidate_id — NEVER the key itself
+    record(db, actor="admin", action="api_key_set", detail=candidate_id)
+    return {"ok": True}
+
+
+@router.delete("/candidates/{candidate_id}/api-key")
+def clear_api_key(
+    candidate_id: str,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    cand = db.execute(
+        select(Candidate).where(Candidate.candidate_id == candidate_id)
+    ).scalar_one_or_none()
+    if cand is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    cand.api_key_encrypted = None
+    db.commit()
+    # Audit: log only the candidate_id — NEVER the key itself
+    record(db, actor="admin", action="api_key_clear", detail=candidate_id)
+    return {"ok": True}
