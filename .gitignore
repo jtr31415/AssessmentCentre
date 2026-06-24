@@ -32,3 +32,6 @@ Thumbs.db
 
 # Postgres local volume (if bind-mounted)
 pgdata/
+
+# SDD scratch (briefs, reports, ledger, review packages)
+.superpowers/
