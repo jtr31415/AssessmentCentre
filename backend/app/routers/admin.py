@@ -1,14 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit import record
 from app.candidate_ids import allocate_candidate_id
+from app.content_manifest import MANIFEST
 from app.db import get_db
 from app.deps import current_admin
-from app.models import Candidate
+from app.models import AuditLog, Booking, Candidate, DownloadEvent, Question, Slot
 from app.schemas import ApiKeyPaste, CreateCandidate
 from app.security import encrypt_secret, generate_token
 
@@ -148,6 +149,82 @@ def enable_candidate(
     db.commit()
     record(db, actor="admin", action="account_enable", detail=candidate_id)
     return {"status": cand.status}
+
+
+@router.get("/activity")
+def get_activity(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Return one monitoring row per candidate, ordered by candidate_id."""
+    manifest_keys = [entry["file_key"] for entry in MANIFEST]
+
+    candidates = (
+        db.execute(select(Candidate).order_by(Candidate.candidate_id)).scalars().all()
+    )
+
+    rows = []
+    for cand in candidates:
+        # Booking + slot
+        booking = db.execute(
+            select(Booking).where(Booking.candidate_id == cand.id)
+        ).scalar_one_or_none()
+
+        if booking:
+            slot = db.get(Slot, booking.slot_id)
+            slot_starts_at = slot.starts_at.isoformat() if slot else None
+            unlock_at = booking.unlock_at.isoformat()
+        else:
+            slot_starts_at = None
+            unlock_at = None
+
+        # has_logged_in
+        login_exists = db.execute(
+            select(AuditLog).where(
+                AuditLog.actor == cand.candidate_id,
+                AuditLog.action == "login",
+            )
+        ).first()
+
+        # key_revealed
+        reveal_exists = db.execute(
+            select(AuditLog).where(
+                AuditLog.actor == cand.candidate_id,
+                AuditLog.action == "api_key_reveal",
+            )
+        ).first()
+
+        # downloads — latest downloaded_at per file_key
+        download_rows = db.execute(
+            select(DownloadEvent.file_key, func.max(DownloadEvent.downloaded_at).label("latest"))
+            .where(DownloadEvent.candidate_id == cand.id)
+            .group_by(DownloadEvent.file_key)
+        ).all()
+        download_map = {row.file_key: row.latest for row in download_rows}
+        downloads = {
+            key: (download_map[key].isoformat() if key in download_map else None)
+            for key in manifest_keys
+        }
+
+        # question_count
+        question_count = db.execute(
+            select(func.count(Question.id)).where(Question.candidate_id == cand.id)
+        ).scalar()
+
+        rows.append({
+            "candidate_id": cand.candidate_id,
+            "first_name": cand.first_name,
+            "status": cand.status,
+            "has_booking": booking is not None,
+            "slot_starts_at": slot_starts_at,
+            "unlock_at": unlock_at,
+            "has_logged_in": login_exists is not None,
+            "downloads": downloads,
+            "key_revealed": reveal_exists is not None,
+            "question_count": question_count,
+        })
+
+    return rows
 
 
 @router.delete("/candidates/{candidate_id}/api-key")
