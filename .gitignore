@@ -1,0 +1,34 @@
+# Secrets & env
+.env
+.env.*
+!.env.example
+*.key
+secrets/
+
+# Admin-managed content files (never in repo)
+backend/content/*
+!backend/content/.gitkeep
+!backend/content/MANIFEST*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Postgres local volume (if bind-mounted)
+pgdata/
