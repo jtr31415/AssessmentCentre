@@ -3,9 +3,7 @@ set -euo pipefail
 
 PGHOST="${PGHOST:-db}"
 PGPORT="${PGPORT:-5432}"
-PGUSER="${PGUSER}"
-PGPASSWORD="${PGPASSWORD}"
-PGDATABASE="${PGDATABASE}"
+# Required: PGUSER, PGPASSWORD, PGDATABASE must be set in the environment
 
 export PGPASSWORD
 

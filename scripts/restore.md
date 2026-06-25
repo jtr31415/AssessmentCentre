@@ -14,7 +14,7 @@ Dumps older than 7 days are pruned automatically by the backup sidecar.
 Run a one-off backup at any time (without waiting for the daily cycle):
 
 ```sh
-docker compose run --rm backup /backup.sh
+docker compose run --rm backup sh /backup.sh
 ```
 
 ---

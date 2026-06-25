@@ -49,7 +49,7 @@ services:
       - ./scripts/backup.sh:/backup.sh:ro
       - backups:/backups
     command: >
-      sh -c 'chmod +x /backup.sh; while true; do /backup.sh || echo backup failed; sleep 86400; done'
+      sh -c 'while true; do sh /backup.sh || echo backup failed; sleep 86400; done'
     restart: unless-stopped
 
 volumes:
