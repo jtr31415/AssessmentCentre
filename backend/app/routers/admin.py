@@ -246,6 +246,8 @@ def get_activity(
             "downloads": downloads,
             "key_revealed": reveal_exists is not None,
             "question_count": question_count,
+            "nda_accepted_at": cand.nda_accepted_at.isoformat() if cand.nda_accepted_at else None,
+            "nda_declined_at": cand.nda_declined_at.isoformat() if cand.nda_declined_at else None,
         })
 
     return rows

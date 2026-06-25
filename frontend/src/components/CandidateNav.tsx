@@ -7,6 +7,7 @@ interface Profile {
   candidate_id: string;
   first_name: string;
   status: string;
+  nda_accepted: boolean;
 }
 
 export default function CandidateNav() {
@@ -16,10 +17,19 @@ export default function CandidateNav() {
 
   useEffect(() => {
     api.get("/api/me/profile")
-      .then((data: Profile) => setProfile(data))
+      .then((data: Profile) => {
+        // Gate: candidates who haven't accepted the NDA can't reach the
+        // dashboard/booking/questions pages — send them to the NDA page.
+        if (!data.nda_accepted) {
+          navigate("/nda", { replace: true });
+          return;
+        }
+        setProfile(data);
+      })
       .catch(() => {
         // 401 or network error — stay null, no crash
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleLogout() {

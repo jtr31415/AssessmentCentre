@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import current_candidate
+from app.deps import require_nda
 from app.models import Booking, Candidate
 
 
@@ -38,10 +38,10 @@ def is_unlocked(db: Session, candidate: Candidate) -> bool:
 
 
 def require_unlocked(
-    cand: Candidate = Depends(current_candidate),  # noqa: B008
+    cand: Candidate = Depends(require_nda),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ) -> Candidate:
-    """FastAPI dependency — raises 403 if content is locked, else returns the candidate."""
+    """403 if the NDA is unaccepted (via require_nda) or content is locked."""
     if not is_unlocked(db, cand):
         raise HTTPException(status_code=403, detail="content is locked")
     return cand

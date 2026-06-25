@@ -44,6 +44,15 @@ class Candidate(Base):
     spend_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # NDA acceptance at first login. Mutually exclusive: accepting clears the
+    # decline timestamp and vice-versa, so the current state is "accepted" iff
+    # nda_accepted_at is set. The audit log retains the full accept/decline history.
+    nda_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    nda_declined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

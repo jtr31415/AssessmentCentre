@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.audit import record
 from app.config_helpers import get_config_str
 from app.db import get_db
-from app.deps import current_admin, current_candidate
+from app.deps import current_admin, current_candidate, require_nda
 from app.models import Candidate, Question
 from app.schemas import AnswerCreate, QuestionCreate
 
@@ -47,7 +47,7 @@ def _question_dict(q: Question) -> dict:
 def submit_question(
     body: QuestionCreate,
     db: Session = Depends(get_db),  # noqa: B008
-    cand: Candidate = Depends(current_candidate),  # noqa: B008
+    cand: Candidate = Depends(require_nda),  # noqa: B008
 ):
     """Candidate submits a question. Rejects empty / whitespace-only body."""
     stripped = body.body.strip()

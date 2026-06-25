@@ -36,6 +36,7 @@ def create_and_login_candidate(client, db_session, first_name: str) -> dict:
         json={"candidate_id": candidate_id, "password": "pw-123456"},
     )
     assert li.status_code == 200, li.text
+    client.post("/api/me/nda/accept")  # accept NDA at first login (gates participation)
     return {"candidate_id": candidate_id}
 
 
@@ -137,6 +138,7 @@ def test_admin_sees_all_questions(client, db_session):
         "/api/auth/candidate/login",
         json={"candidate_id": b_cid, "password": "pw-123456"},
     )
+    client.post("/api/me/nda/accept")  # accept NDA at first login (gates participation)
     r_b = client.post("/api/me/questions", json={"body": "B asks about tools"})
     assert r_b.status_code == 201
 

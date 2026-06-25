@@ -8,6 +8,7 @@ import AdminActivity from "./pages/AdminActivity";
 import AdminContent from "./pages/AdminContent";
 import AdminConfig from "./pages/AdminConfig";
 import CandidateLogin from "./pages/CandidateLogin";
+import Nda from "./pages/Nda";
 import SetPassword from "./pages/SetPassword";
 import CandidateBooking from "./pages/CandidateBooking";
 import CandidateDashboard from "./pages/CandidateDashboard";
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/admin/content" element={<AdminContent />} />
           <Route path="/admin/config" element={<AdminConfig />} />
           <Route path="/login" element={<CandidateLogin />} />
+          <Route path="/nda" element={<Nda />} />
           <Route path="/set-password" element={<SetPassword />} />
           <Route path="/dashboard" element={<CandidateDashboard />} />
           <Route path="/questions" element={<CandidateQA />} />

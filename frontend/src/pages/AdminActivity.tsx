@@ -13,7 +13,27 @@ type ActivityRow = {
   downloads: Record<string, string | null>;
   key_revealed: boolean;
   question_count: number;
+  nda_accepted_at: string | null;
+  nda_declined_at: string | null;
 };
+
+function NdaBadge({ row }: { row: ActivityRow }) {
+  if (row.nda_accepted_at) {
+    return (
+      <span className="px-2 py-0.5 rounded text-[9px] uppercase font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
+        Accepted
+      </span>
+    );
+  }
+  if (row.nda_declined_at) {
+    return (
+      <span className="px-2 py-0.5 rounded text-[9px] uppercase font-bold border bg-red-50 text-red-800 border-red-300">
+        Declined
+      </span>
+    );
+  }
+  return <span className="text-brand-muted">—</span>;
+}
 
 function fmt(ts: string | null) {
   if (!ts) return "—";
@@ -84,7 +104,7 @@ export default function AdminActivity() {
     new Set(rows.flatMap((r) => Object.keys(r.downloads)))
   ).sort();
 
-  const totalCols = 5 + allFileKeys.length + 2; // 5 fixed + file keys + Key Revealed + #Questions
+  const totalCols = 6 + allFileKeys.length + 2; // 6 fixed + file keys + Key Revealed + #Questions
 
   return (
     <div className="space-y-4">
@@ -144,6 +164,9 @@ export default function AdminActivity() {
                   <th scope="col" className="p-3 text-center">
                     Logged In
                   </th>
+                  <th scope="col" className="p-3 text-center">
+                    NDA
+                  </th>
                   {allFileKeys.map((k) => (
                     <th key={k} scope="col" className="p-3 text-center">
                       {labels[k] ?? k}
@@ -197,6 +220,10 @@ export default function AdminActivity() {
 
                     <td className="p-3 text-center">
                       <Tick yes={r.has_logged_in} />
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <NdaBadge row={r} />
                     </td>
 
                     {allFileKeys.map((k) => (

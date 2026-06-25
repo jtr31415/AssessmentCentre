@@ -42,6 +42,7 @@ def create_and_activate_candidate(client, db_session):
         json={"candidate_id": data["candidate_id"], "password": "pw-content1"},
     )
     assert li.status_code == 200
+    client.post("/api/me/nda/accept")  # accept NDA at first login (gates participation)
     return data["candidate_id"]
 
 

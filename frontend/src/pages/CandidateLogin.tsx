@@ -17,7 +17,11 @@ export default function CandidateLogin() {
     setErr("");
     try {
       await api.post("/api/auth/candidate/login", { candidate_id: candidateId, password });
-      nav("/dashboard");
+      // First-login gate: require NDA acceptance before the assessment.
+      const profile = (await api
+        .get("/api/me/profile")
+        .catch(() => ({ nda_accepted: false }))) as { nda_accepted: boolean };
+      nav(profile.nda_accepted ? "/dashboard" : "/nda");
     } catch (x) {
       setErr(x instanceof Error ? x.message : String(x));
     } finally {

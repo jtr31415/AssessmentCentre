@@ -25,3 +25,17 @@ def current_candidate(request: Request, db: Session = Depends(get_db)) -> Candid
     if cand.status != "active":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account is not active")
     return cand
+
+
+def require_nda(cand: Candidate = Depends(current_candidate)) -> Candidate:  # noqa: B008
+    """Gate participation on NDA acceptance.
+
+    The candidate may browse the NDA page and read their own profile without
+    accepting, but cannot take part in the exercise (book, access data, ask
+    questions, reveal key) until they accept. 403 otherwise.
+    """
+    if cand.nda_accepted_at is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "NDA acceptance required to take part"
+        )
+    return cand

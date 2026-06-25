@@ -12,6 +12,7 @@ from app.routers import (
     booking,
     candidate_key,
     content,
+    nda,
     public,
     slots,
 )
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(booking_me_router)
     app.include_router(content.router)
     app.include_router(candidate_key.router)
+    app.include_router(nda.me_router)
     app.include_router(qa_me_router)
     app.include_router(qa_admin_router)
     return app

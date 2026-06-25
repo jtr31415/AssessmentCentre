@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.audit import record
 from app.config_helpers import get_config_int, get_config_str
 from app.db import get_db
-from app.deps import current_admin, current_candidate
+from app.deps import current_admin, current_candidate, require_nda
 from app.models import Booking, Candidate, Slot
 from app.prep_window import build_preview, compute_unlock_at
 from app.schemas import ReassignRequest, ReleaseRequest
@@ -90,7 +90,7 @@ def slot_preview(
 def book_slot(
     slot_id: int,
     db: Session = Depends(get_db),  # noqa: B008
-    cand: Candidate = Depends(current_candidate),  # noqa: B008
+    cand: Candidate = Depends(require_nda),  # noqa: B008
 ):
     """Atomically book a slot for the authenticated candidate.
 
@@ -273,11 +273,13 @@ def release_booking(
 def my_profile(
     cand: Candidate = Depends(current_candidate),  # noqa: B008
 ):
-    """Return the authenticated candidate's profile (id, name, status)."""
+    """Return the authenticated candidate's profile (id, name, status, NDA state)."""
     return {
         "candidate_id": cand.candidate_id,
         "first_name": cand.first_name,
         "status": cand.status,
+        "nda_accepted": cand.nda_accepted_at is not None,
+        "nda_declined": cand.nda_declined_at is not None,
     }
 
 
