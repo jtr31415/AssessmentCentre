@@ -1,4 +1,5 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import Shell from "./components/Shell";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminSlots from "./pages/AdminSlots";
@@ -16,23 +17,22 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/slots" element={<AdminSlots />} />
-        <Route path="/admin/questions" element={<AdminQuestions />} />
-        <Route path="/admin/activity" element={<AdminActivity />} />
-        <Route path="/admin/config" element={<AdminConfig />} />
-        <Route path="/login" element={<CandidateLogin />} />
-        <Route path="/set-password" element={<SetPassword />} />
-        <Route path="/dashboard" element={<CandidateDashboard />} />
-        <Route path="/questions" element={<CandidateQA />} />
-        <Route path="/book" element={<CandidateBooking />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="*" element={<CandidateLogin />} />
+        <Route element={<Shell />}>
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/slots" element={<AdminSlots />} />
+          <Route path="/admin/questions" element={<AdminQuestions />} />
+          <Route path="/admin/activity" element={<AdminActivity />} />
+          <Route path="/admin/config" element={<AdminConfig />} />
+          <Route path="/login" element={<CandidateLogin />} />
+          <Route path="/set-password" element={<SetPassword />} />
+          <Route path="/dashboard" element={<CandidateDashboard />} />
+          <Route path="/questions" element={<CandidateQA />} />
+          <Route path="/book" element={<CandidateBooking />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="*" element={<CandidateLogin />} />
+        </Route>
       </Routes>
-      <footer style={{ padding: 16, fontSize: 12 }}>
-        <Link to="/privacy">Privacy</Link>
-      </footer>
     </BrowserRouter>
   );
 }

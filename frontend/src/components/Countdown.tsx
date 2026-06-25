@@ -48,11 +48,11 @@ export default function Countdown({ unlockAt, onUnlock }: Props) {
 
   if (msLeft <= 0) {
     return (
-      <span>
+      <span className="text-sm text-brand-muted">
         Unlocking your data…{" "}
         <button
           onClick={onUnlock}
-          style={{ marginLeft: 8, cursor: "pointer", fontSize: "inherit" }}
+          className="ml-2 text-brand-blue underline hover:no-underline cursor-pointer text-sm"
         >
           Refresh
         </button>
@@ -61,8 +61,25 @@ export default function Countdown({ unlockAt, onUnlock }: Props) {
   }
 
   return (
-    <span>
-      {days}d {hours}h {minutes}m {seconds}s
-    </span>
+    <div className="bg-white border border-brand-hair p-4 rounded text-center">
+      <p className="text-[10px] uppercase tracking-wider text-brand-muted font-bold mb-1">
+        Materials unlock in
+      </p>
+      <div className="text-2xl md:text-3xl font-extrabold font-mono text-brand-red tracking-tight tabular-numbers flex justify-center items-center gap-1.5">
+        <span>{days}</span>
+        <span className="text-xs text-brand-muted font-sans font-medium uppercase">d</span>
+        <span className="text-brand-hair">:</span>
+        <span>{String(hours).padStart(2, "0")}</span>
+        <span className="text-xs text-brand-muted font-sans font-medium uppercase">h</span>
+        <span className="text-brand-hair">:</span>
+        <span>{String(minutes).padStart(2, "0")}</span>
+        <span className="text-xs text-brand-muted font-sans font-medium uppercase">m</span>
+        <span className="text-brand-hair">:</span>
+        <span className="text-brand-red bg-red-50 px-1 rounded animate-pulse">
+          {String(seconds).padStart(2, "0")}
+        </span>
+        <span className="text-xs text-brand-muted font-sans font-medium uppercase">s</span>
+      </div>
+    </div>
   );
 }
