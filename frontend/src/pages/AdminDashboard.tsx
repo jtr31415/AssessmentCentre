@@ -178,6 +178,8 @@ export default function AdminDashboard() {
         <Link to="/admin/questions">Questions queue</Link>
         {" · "}
         <Link to="/admin/activity">Activity overview</Link>
+        {" · "}
+        <Link to="/admin/config">Settings &amp; data</Link>
       </p>
       <form onSubmit={create}>
         <input placeholder="first name" value={name} onChange={(e) => setName(e.target.value)} />
