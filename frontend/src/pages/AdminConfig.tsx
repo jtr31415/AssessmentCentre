@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { AlertTriangle, ShieldAlert } from "lucide-react";
 import { api } from "../api/client";
 
 interface ConfigMap {
@@ -127,259 +127,325 @@ export default function AdminConfig() {
 
   if (loadError) {
     return (
-      <div>
-        <h1>Settings &amp; data</h1>
-        <p style={{ color: "red" }}>{loadError}</p>
-        <p>
-          <Link to="/admin">← Back to candidates</Link>
-        </p>
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-brand-blue">Settings &amp; data</h1>
+        <div className="p-4 bg-brand-redbg border border-brand-red text-brand-red text-sm rounded-lg flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>{loadError}</span>
+        </div>
       </div>
     );
   }
 
   if (!config) {
     return (
-      <div>
-        <h1>Settings &amp; data</h1>
-        <p>Loading…</p>
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-brand-blue">Settings &amp; data</h1>
+        <p className="text-sm text-brand-muted">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 640, padding: "0 16px" }}>
-      <h1>Settings &amp; data</h1>
-      <p>
-        <Link to="/admin">← Back to candidates</Link>
-      </p>
-
-      {/* Config section */}
-      <section style={{ marginBottom: 32 }}>
-        <h2>Configuration</h2>
-
-        {/* prep_window_days */}
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="prep_window_days" style={{ display: "block", fontWeight: "bold" }}>
-            Prep window (days)
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-            <input
-              id="prep_window_days"
-              type="number"
-              min={1}
-              value={prepDays.value}
-              onChange={(e) => patchPrepDays({ value: e.target.value, message: "", isError: false })}
-              style={{ width: 100 }}
-            />
-            <button
-              onClick={() => saveField("prep_window_days", prepDays.value, patchPrepDays)}
-              disabled={prepDays.saving}
-            >
-              {prepDays.saving ? "Saving…" : "Save"}
-            </button>
-            {prepDays.message && (
-              <span style={{ color: prepDays.isError ? "red" : "green", fontSize: 13 }}>
-                {prepDays.message}
-              </span>
-            )}
-          </div>
+    <div className="space-y-8 max-w-3xl">
+      {/* Configuration Settings */}
+      <div className="border border-brand-hair rounded-lg p-5 bg-white space-y-6 shadow-xs">
+        <div className="panel-title">
+          <h2 className="font-bold text-brand-blue text-sm">Configuration Settings</h2>
         </div>
 
-        {/* retention_date */}
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="retention_date" style={{ display: "block", fontWeight: "bold" }}>
-            Retention reminder date
-          </label>
-          <p style={{ fontSize: 13, color: "#555", margin: "2px 0 6px" }}>
-            Retention reminder — NOT enforced; the system never auto-deletes. Leave blank to keep
-            unset.
-          </p>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              id="retention_date"
-              type="date"
-              value={retDate.value}
-              onChange={(e) => patchRetDate({ value: e.target.value, message: "", isError: false })}
-            />
-            <button
-              onClick={() => saveField("retention_date", retDate.value, patchRetDate)}
-              disabled={retDate.saving}
+        <div className="ml-4 space-y-6">
+          {/* prep_window_days */}
+          <div>
+            <label
+              htmlFor="prep_window_days"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
             >
-              {retDate.saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              onClick={clearRetentionDate}
-              disabled={retDate.saving}
-              style={{ background: "#eee" }}
-            >
-              Clear
-            </button>
-            {retDate.message && (
-              <span style={{ color: retDate.isError ? "red" : "green", fontSize: 13 }}>
-                {retDate.message}
-              </span>
-            )}
+              Prep Window Duration (Days)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                id="prep_window_days"
+                type="number"
+                min={1}
+                value={prepDays.value}
+                onChange={(e) =>
+                  patchPrepDays({ value: e.target.value, message: "", isError: false })
+                }
+                className="w-28 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue tabular-numbers"
+              />
+              <button
+                onClick={() => saveField("prep_window_days", prepDays.value, patchPrepDays)}
+                disabled={prepDays.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {prepDays.saving ? "Saving…" : "Save"}
+              </button>
+              {prepDays.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    prepDays.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {prepDays.message}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-brand-muted mt-1">
+              Number of days candidates have to preview materials before their slot.
+            </p>
           </div>
-        </div>
 
-        {/* qa_sla_text */}
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="qa_sla_text" style={{ display: "block", fontWeight: "bold" }}>
-            Q&amp;A SLA text
-          </label>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
+          {/* retention_date */}
+          <div>
+            <label
+              htmlFor="retention_date"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Retention Reminder Date
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="retention_date"
+                type="date"
+                value={retDate.value}
+                onChange={(e) =>
+                  patchRetDate({ value: e.target.value, message: "", isError: false })
+                }
+                className="text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue tabular-numbers"
+              />
+              <button
+                onClick={() => saveField("retention_date", retDate.value, patchRetDate)}
+                disabled={retDate.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {retDate.saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                onClick={clearRetentionDate}
+                disabled={retDate.saving}
+                className="px-4 py-2 bg-white text-brand-muted hover:text-brand-ink border border-brand-hair text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                Clear
+              </button>
+              {retDate.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    retDate.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {retDate.message}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-brand-muted mt-1">
+              Retention reminder — NOT enforced; the system never auto-deletes. Leave blank to keep
+              unset.
+            </p>
+          </div>
+
+          {/* qa_sla_text */}
+          <div>
+            <label
+              htmlFor="qa_sla_text"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Q&amp;A Service-Level Agreement (SLA) Text
+            </label>
             <textarea
               id="qa_sla_text"
               rows={3}
               value={slaText.value}
-              onChange={(e) => patchSlaText({ value: e.target.value, message: "", isError: false })}
-              style={{ width: 360, resize: "vertical" }}
+              onChange={(e) =>
+                patchSlaText({ value: e.target.value, message: "", isError: false })
+              }
+              className="w-full text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue resize-y"
             />
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div className="flex items-center gap-3 mt-2">
               <button
                 onClick={() => saveField("qa_sla_text", slaText.value, patchSlaText)}
                 disabled={slaText.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
               >
                 {slaText.saving ? "Saving…" : "Save"}
               </button>
               {slaText.message && (
-                <span style={{ color: slaText.isError ? "red" : "green", fontSize: 13 }}>
+                <span
+                  className={`text-xs font-medium ${
+                    slaText.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
                   {slaText.message}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-brand-muted mt-1">
+              Shown inside the candidate's Q&amp;A dashboard portal. Sets human expectations.
+            </p>
+          </div>
+
+          {/* display_timezone */}
+          <div>
+            <label
+              htmlFor="display_timezone"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Display Timezone Descriptor
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="display_timezone"
+                type="text"
+                value={tz.value}
+                onChange={(e) => patchTz({ value: e.target.value, message: "", isError: false })}
+                placeholder="e.g. Europe/London"
+                className="w-56 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              />
+              <button
+                onClick={() => saveField("display_timezone", tz.value, patchTz)}
+                disabled={tz.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {tz.saving ? "Saving…" : "Save"}
+              </button>
+              {tz.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    tz.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {tz.message}
                 </span>
               )}
             </div>
           </div>
         </div>
+      </div>
 
-        {/* display_timezone */}
-        <div style={{ marginBottom: 20 }}>
-          <label htmlFor="display_timezone" style={{ display: "block", fontWeight: "bold" }}>
-            Display timezone
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-            <input
-              id="display_timezone"
-              type="text"
-              value={tz.value}
-              onChange={(e) => patchTz({ value: e.target.value, message: "", isError: false })}
-              placeholder="e.g. Europe/London"
-              style={{ width: 220 }}
-            />
-            <button
-              onClick={() => saveField("display_timezone", tz.value, patchTz)}
-              disabled={tz.saving}
-            >
-              {tz.saving ? "Saving…" : "Save"}
-            </button>
-            {tz.message && (
-              <span style={{ color: tz.isError ? "red" : "green", fontSize: 13 }}>
-                {tz.message}
-              </span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Danger zone */}
-      <section
-        style={{
-          border: "2px solid #c0392b",
-          borderRadius: 6,
-          padding: "16px 20px",
-          marginBottom: 32,
-        }}
+      {/* Danger Zone */}
+      <div
+        className="border border-brand-red rounded-lg p-5 bg-brand-redbg space-y-4"
+        id="danger-zone"
       >
-        <h2 style={{ color: "#c0392b", marginTop: 0 }}>
-          Danger zone — Purge all candidate data
-        </h2>
-
-        <p>
-          <strong>This action permanently deletes:</strong>
-        </p>
-        <ul>
-          <li>All candidates</li>
-          <li>All bookings</li>
-          <li>All candidate questions</li>
-          <li>All download events</li>
-          <li>All candidate audit rows</li>
-        </ul>
-        <p>
-          <strong>This action keeps:</strong> admin account, config, slots, admin audit log.
-        </p>
-
-        {config.retention_date && (
-          <p style={{ background: "#fff3cd", padding: "6px 10px", borderRadius: 4, fontSize: 13 }}>
-            Retention reminder date: <strong>{config.retention_date}</strong>
-          </p>
-        )}
-        {!config.retention_date && (
-          <p style={{ fontSize: 13, color: "#888" }}>
-            No retention reminder date is set. Configure one above if needed.
-          </p>
-        )}
-
-        {purgeResult ? (
-          <div
-            style={{
-              background: "#d4edda",
-              border: "1px solid #28a745",
-              borderRadius: 4,
-              padding: "10px 14px",
-              marginBottom: 12,
-            }}
-          >
-            <strong>Purge complete.</strong> Records deleted:
-            <ul style={{ margin: "6px 0 0" }}>
-              {Object.entries(purgeResult.deleted).map(([k, v]) => (
-                <li key={k}>
-                  {k}: <strong>{v}</strong>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {purgeError && (
-          <p style={{ color: "#c0392b", fontWeight: "bold" }}>{purgeError}</p>
-        )}
-
-        <div style={{ marginTop: 12 }}>
-          <label htmlFor="purge_confirm" style={{ display: "block", marginBottom: 4 }}>
-            To confirm, type exactly:{" "}
-            <code style={{ background: "#f8d7da", padding: "1px 4px" }}>{PURGE_PHRASE}</code>
-          </label>
-          <input
-            id="purge_confirm"
-            type="text"
-            value={purgeInput}
-            onChange={(e) => {
-              setPurgeInput(e.target.value);
-              setPurgeError("");
-              setPurgeResult(null);
-            }}
-            placeholder={PURGE_PHRASE}
-            style={{ width: 320, fontFamily: "monospace" }}
-            autoComplete="off"
-          />
+        <div className="flex items-center gap-2 text-brand-red">
+          <ShieldAlert className="w-5 h-5 flex-shrink-0" />
+          <h2 className="font-bold text-sm uppercase tracking-wider">
+            Danger Zone — Purge all candidate data
+          </h2>
         </div>
 
-        <button
-          onClick={handlePurge}
-          disabled={purgeInput !== PURGE_PHRASE || purging}
-          style={{
-            marginTop: 12,
-            background: purgeInput === PURGE_PHRASE ? "#c0392b" : "#ccc",
-            color: purgeInput === PURGE_PHRASE ? "#fff" : "#666",
-            border: "none",
-            padding: "8px 18px",
-            borderRadius: 4,
-            cursor: purgeInput === PURGE_PHRASE ? "pointer" : "not-allowed",
-            fontWeight: "bold",
-          }}
-        >
-          {purging ? "Purging…" : "Purge all candidate data"}
-        </button>
-      </section>
+        <div className="ml-4 space-y-4 text-xs text-brand-ink leading-relaxed">
+          <p>
+            This action is destructive and{" "}
+            <strong className="text-brand-red">permanent</strong>. It deletes all candidate
+            audit histories, questions, bookings, and logins, resetting the assessment pipeline.
+          </p>
+
+          {/* What's deleted / kept */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white border border-brand-hair p-4 rounded-lg">
+            <div>
+              <p className="font-bold text-brand-red mb-1">This action permanently deletes:</p>
+              <ul className="list-disc pl-4 space-y-0.5 text-brand-ink font-semibold">
+                <li>All candidates</li>
+                <li>All bookings</li>
+                <li>All candidate questions</li>
+                <li>All download events</li>
+                <li>All candidate audit rows</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-bold text-brand-blue mb-1">This action preserves:</p>
+              <ul className="list-disc pl-4 space-y-0.5 text-brand-muted">
+                <li>Admin account</li>
+                <li>Config</li>
+                <li>Slots</li>
+                <li>Admin audit log</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Retention reminder */}
+          {config.retention_date ? (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+              <span>
+                Retention reminder date:{" "}
+                <strong className="font-mono tabular-numbers">{config.retention_date}</strong>
+              </span>
+            </div>
+          ) : (
+            <p className="text-[11px] text-brand-muted italic">
+              No retention reminder date is set. Configure one above if needed.
+            </p>
+          )}
+
+          {/* Purge success result */}
+          {purgeResult && (
+            <div className="p-4 bg-amber-50 border border-amber-400 text-amber-900 rounded space-y-2">
+              <p className="font-bold text-xs uppercase tracking-wider">
+                Purge complete. Records deleted:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(purgeResult.deleted).map(([k, v]) => (
+                  <div
+                    key={k}
+                    className="bg-white p-2 rounded border border-amber-200 min-w-[80px] text-center"
+                  >
+                    <p className="text-[10px] text-brand-muted font-sans font-semibold uppercase">
+                      {k}
+                    </p>
+                    <p className="text-brand-red font-mono font-bold tabular-numbers">{v}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Purge error */}
+          {purgeError && (
+            <div className="p-3 bg-brand-redbg border border-brand-red text-brand-red text-xs rounded flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>{purgeError}</span>
+            </div>
+          )}
+
+          {/* Confirmation input + button */}
+          <div className="space-y-3">
+            <label
+              htmlFor="purge_confirm"
+              className="block text-[11px] font-semibold text-brand-ink uppercase tracking-wider"
+            >
+              To confirm, type exactly:{" "}
+              <code className="font-mono bg-white border border-brand-hair px-1.5 py-0.5 text-brand-red rounded font-bold normal-case tracking-normal">
+                {PURGE_PHRASE}
+              </code>
+            </label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                id="purge_confirm"
+                type="text"
+                value={purgeInput}
+                onChange={(e) => {
+                  setPurgeInput(e.target.value);
+                  setPurgeError("");
+                  setPurgeResult(null);
+                }}
+                placeholder={PURGE_PHRASE}
+                autoComplete="off"
+                className="flex-1 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-red font-mono"
+              />
+              <button
+                onClick={handlePurge}
+                disabled={purgeInput !== PURGE_PHRASE || purging}
+                className="px-5 py-2 bg-brand-red text-white text-xs font-bold rounded hover:bg-opacity-90 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                {purging ? "Purging…" : "Purge all candidate data"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
