@@ -261,6 +261,18 @@ def release_booking(
 # Candidate: read own booking
 # ---------------------------------------------------------------------------
 
+@me_router.get("/profile")
+def my_profile(
+    cand: Candidate = Depends(current_candidate),  # noqa: B008
+):
+    """Return the authenticated candidate's profile (id, name, status)."""
+    return {
+        "candidate_id": cand.candidate_id,
+        "first_name": cand.first_name,
+        "status": cand.status,
+    }
+
+
 @me_router.get("/booking")
 def my_booking(
     db: Session = Depends(get_db),  # noqa: B008
