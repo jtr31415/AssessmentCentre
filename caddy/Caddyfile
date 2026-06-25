@@ -1,3 +1,11 @@
+{
+    # Request RSA certificates (not Caddy's default ECDSA). Some corporate
+    # TLS-inspection proxies/firewalls don't support ECDSA cipher suites and
+    # fail the handshake with ERR_SSL_VERSION_OR_CIPHER_MISMATCH. RSA is
+    # universally supported.
+    key_type rsa2048
+}
+
 {$APP_DOMAIN} {
     encode gzip
     handle /api/* {
