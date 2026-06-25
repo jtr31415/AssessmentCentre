@@ -12,7 +12,10 @@ def test_full_candidate_lifecycle(client, db_session):
     created = client.post("/api/admin/candidates", json={"first_name": "Ada"})
     assert created.status_code == 201
     data = created.json()
-    assert data["candidate_id"] == "cand-01"
+    candidate_id = data["candidate_id"]
+    # IDs are random 4-digit (cand-XXXX) so the candidate count is not revealed.
+    assert candidate_id.startswith("cand-")
+    assert candidate_id[len("cand-"):].isdigit()
     assert data["status"] == "invited"
     token = data["set_password_path"].split("token=")[1]
 
@@ -27,7 +30,7 @@ def test_full_candidate_lifecycle(client, db_session):
     client.post("/api/auth/logout")
     li = client.post(
         "/api/auth/candidate/login",
-        json={"candidate_id": "cand-01", "password": "pw-123456"},
+        json={"candidate_id": candidate_id, "password": "pw-123456"},
     )
     assert li.status_code == 200
     me = client.get("/api/auth/me")

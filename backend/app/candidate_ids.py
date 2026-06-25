@@ -1,12 +1,23 @@
+import secrets
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Candidate
 
+# Random, non-sequential 4-digit IDs (cand-1000 .. cand-9999) so a candidate's
+# own ID never reveals how many candidates exist. CSPRNG → also unguessable.
+_LOW = 1000
+_HIGH = 9999
+_MAX_ATTEMPTS = 10000
 
-# Single-admin, sequential allocation by design — not safe under concurrent writers.
+
 def allocate_candidate_id(db: Session) -> str:
-    rows = db.execute(select(Candidate.candidate_id)).scalars().all()
-    nums = [int(r.split("-")[1]) for r in rows if r.startswith("cand-")]
-    nxt = (max(nums) + 1) if nums else 1
-    return f"cand-{nxt:02d}"
+    """Return a fresh unique candidate id of the form ``cand-XXXX`` (4 random digits)."""
+    existing = set(db.execute(select(Candidate.candidate_id)).scalars().all())
+    for _ in range(_MAX_ATTEMPTS):
+        cid = f"cand-{secrets.randbelow(_HIGH - _LOW + 1) + _LOW}"
+        if cid not in existing:
+            return cid
+    # Effectively unreachable for any realistic candidate count (9000 slots).
+    raise RuntimeError("could not allocate a unique candidate id")

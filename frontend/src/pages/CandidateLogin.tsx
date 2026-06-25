@@ -53,15 +53,15 @@ export default function CandidateLogin() {
             <input
               id="candidateId"
               type="text"
-              placeholder="e.g. cand-07"
+              placeholder="e.g. cand-4827"
               value={candidateId}
               onChange={(e) => setCandidateId(e.target.value)}
               disabled={busy}
               className="w-full text-sm border border-brand-hair rounded px-3 py-2.5 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
             />
             <p className="text-[11px] text-brand-muted mt-1">
-              The ID sent in your invitation, e.g.{" "}
-              <code className="font-mono bg-brand-codebg px-1">cand-07</code>
+              The ID shown when you set your password, e.g.{" "}
+              <code className="font-mono bg-brand-codebg px-1">cand-4827</code>
             </p>
           </div>
 

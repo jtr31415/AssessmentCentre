@@ -145,7 +145,7 @@ class TestOpenSlots:
     def test_response_shape(self, client, db_session):
         """Each slot in the list has id and starts_at."""
         seed_admin_and_config(db_session)
-        create_and_login_candidate(client)
+        candidate_id = create_and_login_candidate(client)
 
         # Create a slot as admin
         client.post("/api/auth/logout")
@@ -157,7 +157,7 @@ class TestOpenSlots:
         client.post("/api/auth/logout")
         client.post(
             "/api/auth/candidate/login",
-            json={"candidate_id": "cand-01", "password": "pw-123456"},
+            json={"candidate_id": candidate_id, "password": "pw-123456"},
         )
 
         r = client.get("/api/slots/open")
