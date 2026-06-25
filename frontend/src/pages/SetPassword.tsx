@@ -72,29 +72,30 @@ export default function SetPassword() {
             </div>
 
             {candidateId && (
-              <div className="p-4 bg-brand-b5 border border-brand-b4 rounded">
-                <p className="text-[10px] uppercase tracking-widest text-brand-muted font-bold mb-1.5">
-                  Your Candidate ID — save this
+              <div className="p-5 bg-brand-redbg border-2 border-brand-red rounded-lg shadow-sm">
+                <p className="text-xs uppercase tracking-widest text-brand-red font-extrabold mb-2 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4" />
+                  Your Candidate ID — save this now
                 </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 font-mono font-bold text-lg text-brand-blue tabular-numbers select-all">
+                <div className="flex items-center gap-2 bg-white border border-brand-red rounded px-3 py-2">
+                  <code className="flex-1 font-mono font-extrabold text-2xl text-brand-red tabular-numbers tracking-wide select-all">
                     {candidateId}
                   </code>
                   <button
                     onClick={copyId}
                     title="Copy"
-                    className="p-1.5 rounded text-brand-muted hover:text-brand-ink hover:bg-white cursor-pointer flex-shrink-0"
+                    className="p-2 rounded text-brand-red hover:bg-brand-redbg cursor-pointer flex-shrink-0"
                   >
                     {copied ? (
-                      <Check className="w-4 h-4 text-emerald-600" />
+                      <Check className="w-5 h-5 text-emerald-600" />
                     ) : (
-                      <Copy className="w-4 h-4" />
+                      <Copy className="w-5 h-5" />
                     )}
                   </button>
                 </div>
-                <p className="text-[11px] text-brand-muted mt-2">
+                <p className="text-xs text-brand-ink font-semibold mt-2.5">
                   You'll need this ID together with your password every time you log in.
-                  Note it somewhere safe now.
+                  Write it down somewhere safe before continuing.
                 </p>
               </div>
             )}
