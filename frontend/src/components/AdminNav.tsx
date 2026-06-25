@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
@@ -23,6 +24,25 @@ const TABS = [
 export default function AdminNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const [pendingQuestions, setPendingQuestions] = useState(0);
+
+  // Poll for unanswered candidate questions (in-app notification badge).
+  useEffect(() => {
+    let active = true;
+    const poll = () =>
+      api
+        .get("/api/admin/notifications")
+        .then((d: { unanswered_questions: number }) => {
+          if (active) setPendingQuestions(d.unanswered_questions);
+        })
+        .catch(() => {});
+    poll();
+    const id = setInterval(poll, 20000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [pathname]);
 
   async function handleLogout() {
     try {
@@ -55,6 +75,7 @@ export default function AdminNav() {
         <div className="flex items-center gap-1 overflow-x-auto pb-0">
           {TABS.map(({ to, label, Icon }) => {
             const active = pathname === to;
+            const badge = to === "/admin/questions" ? pendingQuestions : 0;
             return (
               <Link
                 key={to}
@@ -67,6 +88,14 @@ export default function AdminNav() {
               >
                 <Icon className="w-4 h-4" />
                 {label}
+                {badge > 0 && (
+                  <span
+                    className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-brand-red text-white text-[10px] font-bold tabular-numbers"
+                    aria-label={`${badge} unanswered`}
+                  >
+                    {badge}
+                  </span>
+                )}
               </Link>
             );
           })}

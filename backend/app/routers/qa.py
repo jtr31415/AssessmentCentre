@@ -12,7 +12,7 @@ Admin:
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import case, desc
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.audit import record
@@ -75,18 +75,49 @@ def list_my_questions(
     db: Session = Depends(get_db),  # noqa: B008
     cand: Candidate = Depends(current_candidate),  # noqa: B008
 ):
-    """Return the session candidate's questions (newest first) plus sla_text."""
+    """Return the session candidate's questions (newest first) plus sla_text.
+
+    Viewing the thread marks any newly-answered questions as seen, clearing the
+    candidate's unread-answer notification.
+    """
     questions = (
         db.query(Question)
         .filter_by(candidate_id=cand.id)
         .order_by(desc(Question.asked_at))
         .all()
     )
+
+    # Mark answered-but-unseen questions as seen now that the candidate is viewing.
+    now = datetime.now(UTC)
+    changed = False
+    for q in questions:
+        if q.answer is not None and q.answer_seen_at is None:
+            q.answer_seen_at = now
+            changed = True
+    if changed:
+        db.commit()
+
     sla_text = get_config_str(db, "qa_sla_text", _DEFAULT_SLA)
     return {
         "questions": [_question_dict(q) for q in questions],
         "sla_text": sla_text,
     }
+
+
+@me_router.get("/notifications")
+def my_notifications(
+    db: Session = Depends(get_db),  # noqa: B008
+    cand: Candidate = Depends(current_candidate),  # noqa: B008
+):
+    """Lightweight badge poll: how many of my questions were answered but not yet seen."""
+    n = db.execute(
+        select(func.count(Question.id)).where(
+            Question.candidate_id == cand.id,
+            Question.answer.isnot(None),
+            Question.answer_seen_at.is_(None),
+        )
+    ).scalar()
+    return {"answered_unseen": n or 0}
 
 
 # ---------------------------------------------------------------------------

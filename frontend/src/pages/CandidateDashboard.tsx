@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   BookOpen,
+  Calendar,
   CheckCircle2,
   Copy,
   Database,
@@ -475,7 +476,27 @@ function LockedCard({
   );
 }
 
-function UnlockedState() {
+function SlotCard({ booking }: { booking: HasBooking }) {
+  return (
+    <div className="border border-brand-hair rounded-lg bg-white p-5">
+      <div className="panel-title">
+        <h3 className="font-bold text-brand-blue text-sm flex items-center gap-2">
+          <Calendar className="w-4 h-4" aria-hidden={true} />
+          Your Assessment Slot
+        </h3>
+      </div>
+      <p className="text-sm text-brand-ink ml-4 mt-1">
+        Your assessment is scheduled for{" "}
+        <strong className="font-semibold tabular-numbers">
+          {formatDateTime(booking.slot_starts_at)}
+        </strong>
+        .
+      </p>
+    </div>
+  );
+}
+
+function UnlockedState({ booking }: { booking: HasBooking }) {
   return (
     <div className="space-y-6">
       {/* Celebratory banner */}
@@ -497,6 +518,7 @@ function UnlockedState() {
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-8 space-y-6">
+          <SlotCard booking={booking} />
           <UnlockedContent />
           <ApiKeyCard />
         </div>
@@ -558,7 +580,7 @@ export default function CandidateDashboard() {
 
       {bookingState !== null &&
         bookingState.has_booking &&
-        bookingState.unlocked && <UnlockedState />}
+        bookingState.unlocked && <UnlockedState booking={bookingState} />}
     </div>
   );
 }

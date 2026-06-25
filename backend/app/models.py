@@ -35,15 +35,6 @@ class Candidate(Base):
     )
     status: Mapped[str] = mapped_column(String(16), default="invited")
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Anthropic workspace this candidate's API key belongs to. Used to pull their
-    # real USD spend from the organisation Cost API. Optional — spend tracking is
-    # inert until both this and the org Admin key are configured.
-    workspace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Cached spend (USD cents, integer for exactness) + when it was last refreshed.
-    usd_spend_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    spend_updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     # NDA acceptance at first login. Mutually exclusive: accepting clears the
     # decline timestamp and vice-versa, so the current state is "accepted" iff
     # nda_accepted_at is set. The audit log retains the full accept/decline history.
@@ -83,6 +74,11 @@ class Question(Base):
     asked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the candidate last viewed this question's answer (drives the unread
+    # answer notification). Null = answered but not yet seen by the candidate.
+    answer_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class DownloadEvent(Base):

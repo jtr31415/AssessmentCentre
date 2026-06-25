@@ -17,9 +17,6 @@ class Settings(BaseSettings):
     prep_window_days: int = 8
     display_timezone: str = "Europe/London"
     content_dir: str = "content"
-    # Org-level Admin API key (sk-ant-admin01-…) for the Anthropic Cost API.
-    # Blank → per-candidate USD spend tracking is inert (refresh returns 503).
-    anthropic_admin_api_key: str = ""
 
 
 @lru_cache

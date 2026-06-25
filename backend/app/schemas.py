@@ -45,10 +45,6 @@ class ApiKeyPaste(BaseModel):
     api_key: str
 
 
-class WorkspaceSet(BaseModel):
-    workspace_id: str | None = None
-
-
 class QuestionCreate(BaseModel):
     body: str
 

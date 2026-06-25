@@ -14,6 +14,7 @@ export default function CandidateNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [unseenAnswers, setUnseenAnswers] = useState(0);
 
   useEffect(() => {
     api.get("/api/me/profile")
@@ -32,6 +33,25 @@ export default function CandidateNav() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Poll for answered-but-unseen questions (in-app notification badge).
+  useEffect(() => {
+    let active = true;
+    const poll = () =>
+      api
+        .get("/api/me/notifications")
+        .then((d: { answered_unseen: number }) => {
+          if (active) setUnseenAnswers(d.answered_unseen);
+        })
+        .catch(() => {});
+    poll();
+    const id = setInterval(poll, 20000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+    // Re-poll when navigating (e.g. visiting Questions marks answers seen).
+  }, [pathname]);
+
   async function handleLogout() {
     try {
       await api.post("/api/auth/logout");
@@ -41,12 +61,17 @@ export default function CandidateNav() {
     navigate("/login");
   }
 
-  const navLink = (to: string, label: string, icon: React.ReactNode) => {
+  const navLink = (
+    to: string,
+    label: string,
+    icon: React.ReactNode,
+    badge = 0
+  ) => {
     const active = pathname === to;
     return (
       <Link
         to={to}
-        className={`px-3 py-1.5 rounded text-xs font-semibold border flex items-center gap-1.5 transition-colors ${
+        className={`relative px-3 py-1.5 rounded text-xs font-semibold border flex items-center gap-1.5 transition-colors ${
           active
             ? "bg-brand-blue text-white border-brand-blue"
             : "bg-white text-brand-muted border-brand-hair hover:text-brand-ink"
@@ -54,6 +79,14 @@ export default function CandidateNav() {
       >
         {icon}
         {label}
+        {badge > 0 && (
+          <span
+            className="ml-1 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-brand-red text-white text-[10px] font-bold tabular-numbers"
+            aria-label={`${badge} new`}
+          >
+            {badge}
+          </span>
+        )}
       </Link>
     );
   };
@@ -93,7 +126,8 @@ export default function CandidateNav() {
           {navLink(
             "/questions",
             "Questions Thread",
-            <MessageSquare className="w-3.5 h-3.5" />
+            <MessageSquare className="w-3.5 h-3.5" />,
+            unseenAnswers
           )}
           <button
             onClick={handleLogout}
