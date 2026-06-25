@@ -3,7 +3,14 @@ import CandidateNav from "./CandidateNav";
 import AdminNav from "./AdminNav";
 
 const CANDIDATE_ROUTES = ["/dashboard", "/book", "/questions"];
-const ADMIN_ROUTES = ["/admin", "/admin/slots", "/admin/questions", "/admin/activity", "/admin/config"];
+const ADMIN_ROUTES = [
+  "/admin",
+  "/admin/slots",
+  "/admin/content",
+  "/admin/questions",
+  "/admin/activity",
+  "/admin/config",
+];
 
 function useSubNav(pathname: string): "candidate" | "admin" | "none" {
   if (CANDIDATE_ROUTES.includes(pathname)) return "candidate";
