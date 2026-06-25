@@ -7,11 +7,20 @@ from sqlalchemy.orm import Session
 
 from app.audit import record
 from app.candidate_ids import allocate_candidate_id
-from app.content_manifest import MANIFEST
+from app.cost_api import CostAPIError, CostAPINotConfigured, fetch_workspace_spend_cents
 from app.db import get_db
 from app.deps import current_admin
-from app.models import AuditLog, Booking, Candidate, Config, DownloadEvent, Question, Slot
-from app.schemas import ApiKeyPaste, ConfigSet, CreateCandidate, PurgeRequest
+from app.models import (
+    AuditLog,
+    Booking,
+    Candidate,
+    Config,
+    ContentFile,
+    DownloadEvent,
+    Question,
+    Slot,
+)
+from app.schemas import ApiKeyPaste, ConfigSet, CreateCandidate, PurgeRequest, WorkspaceSet
 from app.security import encrypt_secret, generate_token
 
 _ALLOWED_CONFIG_KEYS = {"prep_window_days", "retention_date", "qa_sla_text", "display_timezone"}
@@ -61,6 +70,9 @@ def list_candidates(db: Session = Depends(get_db), _: object = Depends(current_a
             "set_password_path": _set_password_path(c.password_set_token)
             if c.password_set_token
             else None,
+            "workspace_id": c.workspace_id,
+            "usd_spend_cents": c.usd_spend_cents,
+            "spend_updated_at": c.spend_updated_at.isoformat() if c.spend_updated_at else None,
         }
         for c in rows
     ]
@@ -160,7 +172,16 @@ def get_activity(
     _: object = Depends(current_admin),  # noqa: B008
 ):
     """Return one monitoring row per candidate, ordered by candidate_id."""
-    manifest_keys = [entry["file_key"] for entry in MANIFEST]
+    # Download columns come from the current content library (ordered for stable display).
+    content_keys = (
+        db.execute(
+            select(ContentFile.file_key).order_by(
+                ContentFile.sort_order, ContentFile.uploaded_at
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     candidates = (
         db.execute(select(Candidate).order_by(Candidate.candidate_id)).scalars().all()
@@ -206,7 +227,7 @@ def get_activity(
         download_map = {row.file_key: row.latest for row in download_rows}
         downloads = {
             key: (download_map[key].isoformat() if key in download_map else None)
-            for key in manifest_keys
+            for key in content_keys
         }
 
         # question_count
@@ -298,6 +319,66 @@ def clear_api_key(
     # Audit: log only the candidate_id — NEVER the key itself
     record(db, actor="admin", action="api_key_clear", detail=candidate_id)
     return {"ok": True}
+
+
+@router.put("/candidates/{candidate_id}/workspace")
+def set_workspace(
+    candidate_id: str,
+    body: WorkspaceSet,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Set (or clear) the Anthropic workspace ID used to attribute this candidate's spend."""
+    cand = _get_candidate_or_404(candidate_id, db)
+    cand.workspace_id = (body.workspace_id or "").strip() or None
+    db.commit()
+    record(db, actor="admin", action="workspace_set", detail=candidate_id)
+    return {"workspace_id": cand.workspace_id}
+
+
+@router.post("/spend/refresh")
+def refresh_spend(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Pull real USD spend per workspace from the Anthropic Cost API and cache it per candidate.
+
+    - 503 if no org Admin API key is configured (spend tracking inert).
+    - 502 if the Cost API call fails.
+    Candidates with no workspace_id are left untouched.
+    """
+    try:
+        totals = fetch_workspace_spend_cents()
+    except CostAPINotConfigured as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Anthropic Admin API key not configured — set ANTHROPIC_ADMIN_API_KEY "
+                "to enable spend tracking."
+            ),
+        ) from e
+    except CostAPIError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Cost API error: {e}",
+        ) from e
+
+    now = datetime.now(UTC)
+    candidates = (
+        db.execute(select(Candidate).where(Candidate.workspace_id.isnot(None)))
+        .scalars()
+        .all()
+    )
+    for cand in candidates:
+        cand.usd_spend_cents = totals.get(cand.workspace_id, 0)
+        cand.spend_updated_at = now
+    db.commit()
+    record(db, actor="admin", action="spend_refresh", detail=f"updated {len(candidates)}")
+    return {
+        "updated": len(candidates),
+        "workspaces_seen": len(totals),
+        "spend_updated_at": now.isoformat(),
+    }
 
 
 @router.get("/config")

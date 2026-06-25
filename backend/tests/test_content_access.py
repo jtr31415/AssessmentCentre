@@ -1,6 +1,4 @@
-"""Tests for content_manifest and content_access.
-
-TDD: written BEFORE implementation (RED first).
+"""Tests for content_access (unlock gating) and content_storage (path safety).
 
 Uses the shared ``db_session`` fixture from conftest.py (do NOT define a local
 engine fixture — a module-scoped engine that drops_all on teardown would destroy
@@ -94,50 +92,61 @@ class TestIsUnlocked:
 
 
 # ---------------------------------------------------------------------------
-# resolve_path tests
+# content_storage path-safety tests
 # ---------------------------------------------------------------------------
 
 
-class TestResolvePath:
-    def test_returns_none_for_unknown_file_key(self, tmp_path):
-        """resolve_path returns None for a file_key not in MANIFEST."""
-        from app.content_manifest import resolve_path
+class TestSafeExtension:
+    def test_simple_extension(self):
+        from app.content_storage import safe_extension
 
-        result = resolve_path("totally_unknown_key", str(tmp_path))
-        assert result is None
+        assert safe_extension("brief.PDF") == ".pdf"
 
-    def test_returns_none_for_traversal_style_key(self, tmp_path):
-        """resolve_path rejects a traversal-style key like '../config'."""
-        from app.content_manifest import resolve_path
+    def test_no_extension_returns_empty(self):
+        from app.content_storage import safe_extension
 
-        result = resolve_path("../config", str(tmp_path))
-        assert result is None
+        assert safe_extension("README") == ""
 
-    def test_returns_none_when_file_does_not_exist_on_disk(self, tmp_path):
-        """resolve_path returns None if the manifest entry's file does not exist on disk."""
-        from app.content_manifest import MANIFEST, resolve_path
+    def test_traversal_and_weird_names_collapse(self):
+        from app.content_storage import safe_extension
 
-        # Use a real file_key but don't create the file in tmp_path
-        key = MANIFEST[0]["file_key"]
-        result = resolve_path(key, str(tmp_path))
-        assert result is None
+        # No clean alphanumeric suffix → empty (never produces a path separator).
+        assert safe_extension("../../etc/passwd") == ""
+        assert safe_extension("evil.") == ""
 
-    def test_returns_path_for_known_key_when_file_exists(self, tmp_path):
-        """resolve_path returns a real Path when the manifest file exists in content_dir."""
-        from app.content_manifest import MANIFEST, resolve_path
 
-        # Create the placeholder file in tmp_path
-        entry = MANIFEST[0]
-        (tmp_path / entry["filename"]).write_bytes(b"placeholder")
+class TestStoredFilename:
+    def test_stored_filename_is_hex_key_plus_ext(self):
+        from app.content_storage import allocate_file_key, stored_filename_for
 
-        result = resolve_path(entry["file_key"], str(tmp_path))
+        key = allocate_file_key()
+        assert len(key) == 32
+        assert stored_filename_for(key, "turbine.csv") == f"{key}.csv"
+        assert stored_filename_for(key, "noext") == key
+
+
+class TestResolveStoredPath:
+    def test_rejects_non_whitelisted_name(self, tmp_path):
+        from app.content_storage import resolve_stored_path
+
+        # A traversal-style name never matches the strict <hex>[.ext] whitelist.
+        (tmp_path / "secret").write_bytes(b"x")
+        assert resolve_stored_path("../secret", str(tmp_path)) is None
+        assert resolve_stored_path("not-a-key.txt", str(tmp_path)) is None
+
+    def test_returns_none_when_file_missing(self, tmp_path):
+        from app.content_storage import allocate_file_key, resolve_stored_path
+
+        stored = f"{allocate_file_key()}.pdf"
+        assert resolve_stored_path(stored, str(tmp_path)) is None
+
+    def test_returns_path_when_file_exists(self, tmp_path):
+        from app.content_storage import allocate_file_key, resolve_stored_path
+
+        stored = f"{allocate_file_key()}.pdf"
+        (tmp_path / stored).write_bytes(b"placeholder")
+
+        result = resolve_stored_path(stored, str(tmp_path))
         assert result is not None
         assert isinstance(result, Path)
         assert result.is_file()
-
-    def test_returns_none_for_another_traversal_variant(self, tmp_path):
-        """resolve_path also rejects '../../etc/passwd' style keys."""
-        from app.content_manifest import resolve_path
-
-        result = resolve_path("../../etc/passwd", str(tmp_path))
-        assert result is None

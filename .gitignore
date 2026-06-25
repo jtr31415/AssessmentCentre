@@ -35,3 +35,6 @@ pgdata/
 
 # SDD scratch (briefs, reports, ledger, review packages)
 .superpowers/
+
+# Design prototype reference (kept local, not in repo)
+docs/Design PT/

@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 import sqlalchemy.exc
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import record
@@ -35,18 +35,26 @@ def list_open_slots(
     db: Session = Depends(get_db),  # noqa: B008
     _: object = Depends(current_candidate),  # noqa: B008
 ):
-    """Return slots where booked_count < capacity, ordered by starts_at."""
-    booked_count_subq = (
-        select(func.count(Booking.id))
+    """Return slots that have NO bookings at all, ordered by starts_at.
+
+    Slots are exclusive from the candidate's point of view: the moment any
+    candidate books a slot it disappears from every other candidate's list,
+    regardless of the slot's capacity.  This is deliberate — candidates must
+    never see which slots are taken, so they cannot infer how many other
+    candidates are in the running.  (Admins still see full booked/capacity
+    counts via /api/admin/slots.)
+    """
+    has_booking = (
+        select(Booking.id)
         .where(Booking.slot_id == Slot.id)
         .correlate(Slot)
-        .scalar_subquery()
+        .exists()
     )
 
     rows = (
         db.execute(
             select(Slot)
-            .where(booked_count_subq < Slot.capacity)
+            .where(~has_booking)
             .order_by(Slot.starts_at)
         )
         .scalars()

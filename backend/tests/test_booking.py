@@ -109,6 +109,38 @@ class TestOpenSlots:
         assert full_slot_id not in ids, "Full slot should be excluded"
         assert open_slot_id in ids, "Open slot should be included"
 
+    def test_excludes_partially_booked_multi_capacity_slot(self, client, db_session):
+        """A capacity-2 slot with ONE booking must NOT appear to other candidates.
+
+        Candidates must never see a slot that anyone else has booked, so that
+        they cannot infer how many other candidates are in the running.
+        """
+        seed_admin_and_config(db_session)
+
+        # Candidate A books one seat of a 2-capacity slot.
+        cand_a_id = create_and_login_candidate(client)
+        client.post("/api/auth/logout")
+        login_admin(client)
+        future = datetime.now(UTC) + timedelta(days=30)
+        shared_slot_id = admin_create_slot(client, future + timedelta(hours=1), capacity=2)
+        empty_slot_id = admin_create_slot(client, future + timedelta(hours=2), capacity=2)
+
+        client.post("/api/auth/logout")
+        client.post(
+            "/api/auth/candidate/login",
+            json={"candidate_id": cand_a_id, "password": "pw-123456"},
+        )
+        r = client.post(f"/api/slots/{shared_slot_id}/book")
+        assert r.status_code == 201, r.text
+
+        # Candidate B must not see the slot A booked, even though a seat remains.
+        _second_candidate(client, db_session)
+        r = client.get("/api/slots/open")
+        assert r.status_code == 200
+        ids = [s["id"] for s in r.json()]
+        assert shared_slot_id not in ids, "Partially-booked slot must be hidden from others"
+        assert empty_slot_id in ids, "A slot with no bookings must still be visible"
+
     def test_response_shape(self, client, db_session):
         """Each slot in the list has id and starts_at."""
         seed_admin_and_config(db_session)

@@ -19,6 +19,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Persist admin-uploaded content across deploys/rebuilds.
+      - content_data:/app/content
 
   caddy:
     image: caddy:2
@@ -57,3 +60,4 @@ volumes:
   caddy_data:
   caddy_config:
   backups:
+  content_data:

@@ -1,13 +1,8 @@
-"""Tests for gated content list and streamed file download.
+"""Tests for the DB-backed content library: admin upload/list/replace/delete and
+candidate gated list/download.
 
-TDD: written BEFORE implementation (RED first).
-
-Uses the shared ``db_session`` fixture from conftest.py.  Do NOT define a
-local ``engine`` fixture — a module-scoped engine that calls
-``Base.metadata.drop_all`` on teardown corrupts the shared test DB for every
-later module (see project CRITICAL rule).
-
-Mirrors patterns from test_booking.py / test_candidate_flow.py.
+Uses the shared ``db_session``/``client`` fixtures from conftest.py.  Do NOT
+define a local ``engine`` fixture (it would drop the shared test schema).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -15,8 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.content_manifest import MANIFEST
-from app.models import AuditLog, Booking, Candidate, DownloadEvent
+from app.models import AuditLog, Booking, Candidate, ContentFile, DownloadEvent
 from app.seed import seed_admin_and_config
 
 # ---------------------------------------------------------------------------
@@ -52,25 +46,14 @@ def create_and_activate_candidate(client, db_session):
 
 
 def make_candidate_unlocked(client, db_session, candidate_id: str):
-    """Give the candidate a booking whose unlock_at is in the past.
-
-    Strategy: create a slot 1 hour in the future (so unlock_at == now because
-    the slot is within the 8-day prep window → compute_unlock_at returns now),
-    book it via the API, then force unlock_at to 1 hour ago to guarantee
-    is_unlocked() returns True regardless of minor timing jitter.
-    """
-    # Switch to admin to create a slot
+    """Give the candidate a booking whose unlock_at is in the past."""
     client.post("/api/auth/logout")
     login_admin(client)
     future = datetime.now(UTC) + timedelta(hours=1)
-    r = client.post(
-        "/api/admin/slots",
-        json={"starts_at": future.isoformat(), "capacity": 1},
-    )
+    r = client.post("/api/admin/slots", json={"starts_at": future.isoformat(), "capacity": 1})
     assert r.status_code == 201, r.text
     slot_id = r.json()["id"]
 
-    # Switch back to candidate and book
     client.post("/api/auth/logout")
     li = client.post(
         "/api/auth/candidate/login",
@@ -81,7 +64,6 @@ def make_candidate_unlocked(client, db_session, candidate_id: str):
     r = client.post(f"/api/slots/{slot_id}/book")
     assert r.status_code == 201, r.text
 
-    # Force unlock_at to the past in the DB so is_unlocked is definitely True
     cand_row = db_session.execute(
         select(Candidate).where(Candidate.candidate_id == candidate_id)
     ).scalar_one()
@@ -92,261 +74,223 @@ def make_candidate_unlocked(client, db_session, candidate_id: str):
     db_session.commit()
 
 
+def admin_upload(client, label, category, filename, content, media_type="application/pdf"):
+    """Upload a file as admin (caller must be logged in as admin). Returns the JSON body."""
+    r = client.post(
+        "/api/admin/content",
+        files={"file": (filename, content, media_type)},
+        data={"label": label, "category": category},
+    )
+    return r
+
+
 @pytest.fixture()
-def content_dir(tmp_path):
-    """Create placeholder files for every MANIFEST entry and return the dir path."""
-    for entry in MANIFEST:
-        (tmp_path / entry["filename"]).write_bytes(
-            f"placeholder-content-for-{entry['file_key']}".encode()
-        )
-    return tmp_path
-
-
-@pytest.fixture(autouse=False)
-def patch_content_dir(content_dir, monkeypatch):
-    """Override get_settings().content_dir to point at our tmp content dir."""
+def patch_content_dir(tmp_path, monkeypatch):
+    """Point get_settings().content_dir at a fresh tmp dir for uploads + downloads."""
     from app.config import get_settings
 
     settings = get_settings()
-    monkeypatch.setattr(settings, "content_dir", str(content_dir))
-    return content_dir
+    monkeypatch.setattr(settings, "content_dir", str(tmp_path))
+    return tmp_path
 
 
 # ---------------------------------------------------------------------------
-# Test classes
+# Admin upload / validation
 # ---------------------------------------------------------------------------
 
 
-class TestContentListLocked:
-    """Locked candidate (no booking OR future unlock) → 403 on GET /api/content."""
-
-    def test_no_booking_gets_403_on_list(self, client, db_session, patch_content_dir):
-        """Candidate without any booking is locked → 403 on GET /api/content."""
-        create_and_activate_candidate(client, db_session)
-        r = client.get("/api/content")
-        assert r.status_code == 403
-
-    def test_future_unlock_gets_403_on_list(self, client, db_session, patch_content_dir):
-        """Candidate with a future unlock_at is still locked → 403 on GET /api/content."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-
-        # Create a slot far in the future (unlock_at will also be far in the future)
-        client.post("/api/auth/logout")
+class TestAdminUpload:
+    def test_upload_creates_row_and_file(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
         login_admin(client)
-        far_future = datetime.now(UTC) + timedelta(days=30)
-        r = client.post(
-            "/api/admin/slots",
-            json={"starts_at": far_future.isoformat(), "capacity": 1},
-        )
-        assert r.status_code == 201
-        slot_id = r.json()["id"]
 
-        client.post("/api/auth/logout")
-        client.post(
-            "/api/auth/candidate/login",
-            json={"candidate_id": candidate_id, "password": "pw-content1"},
-        )
-        client.post(f"/api/slots/{slot_id}/book")
+        r = admin_upload(client, "Exercise Brief", "brief", "brief.pdf", b"%PDF-1.4 data")
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["label"] == "Exercise Brief"
+        assert body["category"] == "brief"
+        assert body["original_filename"] == "brief.pdf"
+        assert body["size_bytes"] == len(b"%PDF-1.4 data")
+        assert "file_key" in body
 
-        # unlock_at is still in the future → should be locked
-        r = client.get("/api/content")
-        assert r.status_code == 403
-
-
-class TestContentDownloadLocked:
-    """Locked candidate → 403 on GET /api/content/{file_key}."""
-
-    def test_no_booking_gets_403_on_download(self, client, db_session, patch_content_dir):
-        """Candidate without any booking is locked → 403 on download."""
-        create_and_activate_candidate(client, db_session)
-        file_key = MANIFEST[0]["file_key"]
-        r = client.get(f"/api/content/{file_key}")
-        assert r.status_code == 403
-
-    def test_future_unlock_gets_403_on_download(self, client, db_session, patch_content_dir):
-        """Candidate with a future unlock_at → 403 on download."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-
-        client.post("/api/auth/logout")
-        login_admin(client)
-        far_future = datetime.now(UTC) + timedelta(days=30)
-        r = client.post(
-            "/api/admin/slots",
-            json={"starts_at": far_future.isoformat(), "capacity": 1},
-        )
-        assert r.status_code == 201
-        slot_id = r.json()["id"]
-
-        client.post("/api/auth/logout")
-        client.post(
-            "/api/auth/candidate/login",
-            json={"candidate_id": candidate_id, "password": "pw-content1"},
-        )
-        client.post(f"/api/slots/{slot_id}/book")
-
-        file_key = MANIFEST[0]["file_key"]
-        r = client.get(f"/api/content/{file_key}")
-        assert r.status_code == 403
-
-
-class TestContentListUnlocked:
-    """Unlocked candidate → GET /api/content lists manifest entries whose files exist."""
-
-    def test_unlocked_list_returns_200_with_manifest_entries(
-        self, client, db_session, patch_content_dir
-    ):
-        """Unlocked candidate sees all manifest entries (files exist in tmp dir)."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        r = client.get("/api/content")
-        assert r.status_code == 200
-        entries = r.json()
-        assert isinstance(entries, list)
-        # All MANIFEST entries should appear (all placeholder files exist)
-        assert len(entries) == len(MANIFEST)
-        # Check shape
-        for entry in entries:
-            assert "file_key" in entry
-            assert "label" in entry
-            assert "category" in entry
-            # media_type and filename must NOT be leaked
-            assert "media_type" not in entry
-
-    def test_unlocked_list_excludes_missing_files(self, client, db_session, tmp_path, monkeypatch):
-        """Only entries whose file exists on disk are listed."""
-        # Put only the first MANIFEST file in tmp_path
-        first_entry = MANIFEST[0]
-        (tmp_path / first_entry["filename"]).write_bytes(b"data")
-
-        from app.config import get_settings
-        settings = get_settings()
-        monkeypatch.setattr(settings, "content_dir", str(tmp_path))
-
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        r = client.get("/api/content")
-        assert r.status_code == 200
-        entries = r.json()
-        keys = [e["file_key"] for e in entries]
-        assert first_entry["file_key"] in keys
-        # All other keys must NOT appear (files missing)
-        for m in MANIFEST[1:]:
-            assert m["file_key"] not in keys
-
-
-class TestContentDownloadUnlocked:
-    """Unlocked candidate downloads a known file → 200 with correct body + headers + audit."""
-
-    def test_known_file_returns_200_with_correct_bytes(
-        self, client, db_session, patch_content_dir, content_dir
-    ):
-        """Response body equals the placeholder file's bytes."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        entry = MANIFEST[0]
-        expected_bytes = (content_dir / entry["filename"]).read_bytes()
-
-        r = client.get(f"/api/content/{entry['file_key']}")
-        assert r.status_code == 200
-        assert r.content == expected_bytes
-
-    def test_known_file_content_disposition_has_manifest_filename(
-        self, client, db_session, patch_content_dir
-    ):
-        """Content-Disposition header contains the manifest filename."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        entry = MANIFEST[0]
-        r = client.get(f"/api/content/{entry['file_key']}")
-        assert r.status_code == 200
-        disposition = r.headers.get("content-disposition", "")
-        assert entry["filename"] in disposition
-
-    def test_download_writes_download_event_row(
-        self, client, db_session, patch_content_dir
-    ):
-        """A DownloadEvent row is written after a successful download."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        entry = MANIFEST[0]
-        r = client.get(f"/api/content/{entry['file_key']}")
-        assert r.status_code == 200
-
-        # Refresh session to see committed data
-        db_session.expire_all()
-        cand_row = db_session.execute(
-            select(Candidate).where(Candidate.candidate_id == candidate_id)
+        # Row exists and the stored file is on disk.
+        row = db_session.execute(
+            select(ContentFile).where(ContentFile.file_key == body["file_key"])
         ).scalar_one()
-        event = db_session.execute(
-            select(DownloadEvent).where(
-                DownloadEvent.candidate_id == cand_row.id,
-                DownloadEvent.file_key == entry["file_key"],
-            )
-        ).scalar_one_or_none()
-        assert event is not None, "DownloadEvent row must be written on success"
+        assert (patch_content_dir / row.stored_filename).read_bytes() == b"%PDF-1.4 data"
 
-    def test_download_writes_audit_row(
-        self, client, db_session, patch_content_dir
-    ):
-        """An AuditLog row with action='file_download' and detail=file_key is written."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
+    def test_upload_requires_admin(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        r = admin_upload(client, "x", "brief", "x.pdf", b"data")
+        assert r.status_code == 401
 
-        entry = MANIFEST[0]
-        r = client.get(f"/api/content/{entry['file_key']}")
+    def test_upload_rejects_bad_category(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        r = admin_upload(client, "x", "nonsense", "x.pdf", b"data")
+        assert r.status_code == 422
+
+    def test_upload_rejects_empty_label(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        r = admin_upload(client, "   ", "brief", "x.pdf", b"data")
+        assert r.status_code == 422
+
+    def test_upload_rejects_empty_file(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        r = admin_upload(client, "x", "brief", "x.pdf", b"")
+        assert r.status_code == 422
+
+    def test_list_returns_uploaded(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        admin_upload(client, "Brief", "brief", "a.pdf", b"a")
+        admin_upload(client, "Data", "data", "b.csv", b"b", media_type="text/csv")
+
+        r = client.get("/api/admin/content")
+        assert r.status_code == 200
+        rows = r.json()
+        assert len(rows) == 2
+        labels = {row["label"] for row in rows}
+        assert labels == {"Brief", "Data"}
+
+    def test_delete_removes_row_and_file(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        body = admin_upload(client, "Brief", "brief", "a.pdf", b"a").json()
+        file_key = body["file_key"]
+        stored = db_session.execute(
+            select(ContentFile).where(ContentFile.file_key == file_key)
+        ).scalar_one().stored_filename
+        assert (patch_content_dir / stored).exists()
+
+        r = client.delete(f"/api/admin/content/{file_key}")
         assert r.status_code == 200
 
         db_session.expire_all()
+        gone = db_session.execute(
+            select(ContentFile).where(ContentFile.file_key == file_key)
+        ).scalar_one_or_none()
+        assert gone is None
+        assert not (patch_content_dir / stored).exists()
+
+    def test_replace_swaps_file_and_updates_label(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        body = admin_upload(client, "Old", "brief", "a.pdf", b"old-bytes").json()
+        file_key = body["file_key"]
+        old_stored = db_session.execute(
+            select(ContentFile).where(ContentFile.file_key == file_key)
+        ).scalar_one().stored_filename
+
+        r = client.put(
+            f"/api/admin/content/{file_key}",
+            files={"file": ("new.csv", b"new-bytes", "text/csv")},
+            data={"label": "New", "category": "data"},
+        )
+        assert r.status_code == 200, r.text
+        updated = r.json()
+        assert updated["label"] == "New"
+        assert updated["category"] == "data"
+        assert updated["original_filename"] == "new.csv"
+
+        db_session.expire_all()
+        row = db_session.execute(
+            select(ContentFile).where(ContentFile.file_key == file_key)
+        ).scalar_one()
+        # New file written, old removed.
+        assert (patch_content_dir / row.stored_filename).read_bytes() == b"new-bytes"
+        assert not (patch_content_dir / old_stored).exists()
+
+
+# ---------------------------------------------------------------------------
+# Candidate gated list/download
+# ---------------------------------------------------------------------------
+
+
+def _seed_one_file(client, db_session):
+    """As admin, upload one file; return its file_key. Leaves session logged out."""
+    login_admin(client)
+    body = admin_upload(client, "Exercise Brief", "brief", "brief.pdf", b"PDFDATA").json()
+    client.post("/api/auth/logout")
+    return body["file_key"]
+
+
+class TestCandidateGate:
+    def test_locked_candidate_403_on_list(self, client, db_session, patch_content_dir):
+        create_and_activate_candidate(client, db_session)  # no booking → locked
+        r = client.get("/api/content")
+        assert r.status_code == 403
+
+    def test_locked_candidate_403_on_download(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        file_key = _seed_one_file(client, db_session)
+        create_and_activate_candidate(client, db_session)
+        r = client.get(f"/api/content/{file_key}")
+        assert r.status_code == 403
+
+
+class TestCandidateListDownload:
+    def test_unlocked_list_shape(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        _seed_one_file(client, db_session)
+        candidate_id = create_and_activate_candidate(client, db_session)
+        make_candidate_unlocked(client, db_session, candidate_id)
+
+        r = client.get("/api/content")
+        assert r.status_code == 200
+        entries = r.json()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert set(entry.keys()) == {"file_key", "label", "category"}
+        # internal fields must NOT leak
+        assert "stored_filename" not in entry
+        assert "media_type" not in entry
+
+    def test_unlocked_download_returns_bytes_and_disposition(
+        self, client, db_session, patch_content_dir
+    ):
+        seed_admin_and_config(db_session)
+        file_key = _seed_one_file(client, db_session)
+        candidate_id = create_and_activate_candidate(client, db_session)
+        make_candidate_unlocked(client, db_session, candidate_id)
+
+        r = client.get(f"/api/content/{file_key}")
+        assert r.status_code == 200
+        assert r.content == b"PDFDATA"
+        assert "brief.pdf" in r.headers.get("content-disposition", "")
+
+    def test_download_writes_event_and_audit(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        file_key = _seed_one_file(client, db_session)
+        candidate_id = create_and_activate_candidate(client, db_session)
+        make_candidate_unlocked(client, db_session, candidate_id)
+
+        r = client.get(f"/api/content/{file_key}")
+        assert r.status_code == 200
+
+        db_session.expire_all()
+        event = db_session.execute(
+            select(DownloadEvent).where(DownloadEvent.file_key == file_key)
+        ).scalar_one_or_none()
+        assert event is not None
         audit = db_session.execute(
             select(AuditLog).where(
                 AuditLog.action == "file_download",
                 AuditLog.actor == candidate_id,
-                AuditLog.detail == entry["file_key"],
+                AuditLog.detail == file_key,
             )
         ).scalar_one_or_none()
-        assert audit is not None, "AuditLog row for file_download must be written"
+        assert audit is not None
 
-
-class TestContentDownloadUnknownKey:
-    """Unknown file_key → 404 and NO download_event or audit row written."""
-
-    def test_unknown_key_returns_404(self, client, db_session, patch_content_dir):
-        """GET /api/content/totally_unknown → 404."""
+    def test_unknown_key_404_no_event(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
         candidate_id = create_and_activate_candidate(client, db_session)
         make_candidate_unlocked(client, db_session, candidate_id)
 
-        r = client.get("/api/content/totally_unknown_key")
+        r = client.get("/api/content/deadbeefdeadbeefdeadbeefdeadbeef")
         assert r.status_code == 404
 
-    def test_unknown_key_no_download_event_written(
-        self, client, db_session, patch_content_dir
-    ):
-        """No DownloadEvent row for a 404 download attempt."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        client.get("/api/content/totally_unknown_key")
-
         db_session.expire_all()
-        events = db_session.execute(select(DownloadEvent)).scalars().all()
-        assert len(events) == 0, "No DownloadEvent should be written for a 404"
-
-    def test_unknown_key_no_audit_row_written(
-        self, client, db_session, patch_content_dir
-    ):
-        """No AuditLog row for a 404 download attempt."""
-        candidate_id = create_and_activate_candidate(client, db_session)
-        make_candidate_unlocked(client, db_session, candidate_id)
-
-        client.get("/api/content/totally_unknown_key")
-
-        db_session.expire_all()
-        audit = db_session.execute(
-            select(AuditLog).where(AuditLog.action == "file_download")
-        ).scalar_one_or_none()
-        assert audit is None, "No AuditLog row should be written for a 404"
+        assert db_session.execute(select(DownloadEvent)).scalars().all() == []

@@ -35,6 +35,15 @@ class Candidate(Base):
     )
     status: Mapped[str] = mapped_column(String(16), default="invited")
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Anthropic workspace this candidate's API key belongs to. Used to pull their
+    # real USD spend from the organisation Cost API. Optional — spend tracking is
+    # inert until both this and the org Admin key are configured.
+    workspace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Cached spend (USD cents, integer for exactness) + when it was last refreshed.
+    usd_spend_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    spend_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -94,3 +103,31 @@ class Config(Base):
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (UniqueConstraint("key"),)
+
+
+class ContentFile(Base):
+    """An admin-uploaded assessment file.
+
+    Replaces the old hard-coded content manifest: the admin uploads ANY file
+    with a human label + category, and this row is the single source of truth
+    for what candidates can list and download.
+
+    Path-traversal safety: ``file_key`` and ``stored_filename`` are BOTH
+    server-generated (``file_key`` is a uuid4 hex; ``stored_filename`` is that
+    key plus a sanitised extension). The client's original filename is stored
+    only for display / Content-Disposition and is NEVER used to build a path.
+    """
+
+    __tablename__ = "content_file"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(32))  # brief | data | reference
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_filename: Mapped[str] = mapped_column(String(255))
+    media_type: Mapped[str] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

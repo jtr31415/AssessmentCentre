@@ -1,27 +1,59 @@
-"""Tests for GET /api/admin/activity — admin monitoring view (Phase 4, Task 3).
+"""Tests for GET /api/admin/activity — admin monitoring view.
 
 Uses shared db_session + client fixtures from conftest. DO NOT define a local engine.
+
+Download columns are now driven by the DB-backed content library (``content_file``)
+rather than a hard-coded manifest, so each test that inspects ``downloads`` seeds
+its own content rows first.
 """
 
 from datetime import UTC, datetime
 
-from app.content_manifest import MANIFEST
-from app.models import AuditLog, Booking, Candidate, DownloadEvent, Question, Slot
+from app.models import AuditLog, Booking, Candidate, ContentFile, DownloadEvent, Question, Slot
 from app.seed import seed_admin_and_config
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-ALL_FILE_KEYS = [entry["file_key"] for entry in MANIFEST]
-
 
 def login_admin(client):
     client.post("/api/auth/admin/login", json={"username": "admin", "password": "changeme"})
 
 
-def _seed_active_candidate(db_session) -> Candidate:
-    """Seed an active candidate with booking, audit logs, download, and questions."""
+def _seed_content_files(db_session) -> list[str]:
+    """Insert two content_file rows; return their file_keys (ordered)."""
+    keys = ["key_brief_0001", "key_data_0002"]
+    db_session.add(
+        ContentFile(
+            file_key=keys[0],
+            label="Exercise Brief",
+            category="brief",
+            original_filename="brief.pdf",
+            stored_filename=f"{keys[0]}.pdf",
+            media_type="application/pdf",
+            size_bytes=10,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        ContentFile(
+            file_key=keys[1],
+            label="Turbine Data",
+            category="data",
+            original_filename="turbine.csv",
+            stored_filename=f"{keys[1]}.csv",
+            media_type="text/csv",
+            size_bytes=10,
+            sort_order=1,
+        )
+    )
+    db_session.commit()
+    return keys
+
+
+def _seed_active_candidate(db_session, first_download_key: str) -> Candidate:
+    """Seed an active candidate with booking, audit logs, a download, and questions."""
     cand = Candidate(
         candidate_id="C001",
         first_name="Alice",
@@ -30,7 +62,6 @@ def _seed_active_candidate(db_session) -> Candidate:
     db_session.add(cand)
     db_session.flush()
 
-    # Slot + booking
     slot = Slot(starts_at=datetime(2026, 7, 1, 9, 0, tzinfo=UTC))
     db_session.add(slot)
     db_session.flush()
@@ -39,16 +70,11 @@ def _seed_active_candidate(db_session) -> Candidate:
     booking = Booking(candidate_id=cand.id, slot_id=slot.id, unlock_at=unlock)
     db_session.add(booking)
 
-    # Audit: login
     db_session.add(AuditLog(actor="C001", action="login"))
-    # Audit: api_key_reveal
     db_session.add(AuditLog(actor="C001", action="api_key_reveal"))
 
-    # Download one file key (first in manifest)
-    first_key = ALL_FILE_KEYS[0]
-    db_session.add(DownloadEvent(candidate_id=cand.id, file_key=first_key))
+    db_session.add(DownloadEvent(candidate_id=cand.id, file_key=first_download_key))
 
-    # Two questions
     db_session.add(Question(candidate_id=cand.id, body="Question one"))
     db_session.add(Question(candidate_id=cand.id, body="Question two"))
 
@@ -75,14 +101,14 @@ def _seed_invited_candidate(db_session) -> Candidate:
 def test_activity_active_candidate_full_row(client, db_session):
     """An active candidate with all activity shows all fields populated."""
     seed_admin_and_config(db_session)
-    _seed_active_candidate(db_session)
+    keys = _seed_content_files(db_session)
+    _seed_active_candidate(db_session, keys[0])
     login_admin(client)
 
     r = client.get("/api/admin/activity")
     assert r.status_code == 200, r.text
     rows = r.json()
 
-    # Find Alice's row
     row = next((x for x in rows if x["candidate_id"] == "C001"), None)
     assert row is not None, "Expected row for C001"
 
@@ -95,20 +121,19 @@ def test_activity_active_candidate_full_row(client, db_session):
     assert row["key_revealed"] is True
     assert row["question_count"] == 2
 
-    # downloads: first key has a timestamp, all others null
-    first_key = ALL_FILE_KEYS[0]
-    assert row["downloads"][first_key] is not None, f"{first_key} should have a timestamp"
-    for key in ALL_FILE_KEYS[1:]:
-        assert row["downloads"][key] is None, f"{key} should be null"
+    # downloads: first key has a timestamp, the other null
+    assert row["downloads"][keys[0]] is not None, f"{keys[0]} should have a timestamp"
+    assert row["downloads"][keys[1]] is None, f"{keys[1]} should be null"
 
-    # All manifest keys present
-    for key in ALL_FILE_KEYS:
-        assert key in row["downloads"], f"Missing manifest key: {key}"
+    # All current content keys present
+    for key in keys:
+        assert key in row["downloads"], f"Missing content key: {key}"
 
 
 def test_activity_invited_candidate_empty_row(client, db_session):
     """A fresh invited candidate with no activity shows all-false/null/zero."""
     seed_admin_and_config(db_session)
+    keys = _seed_content_files(db_session)
     _seed_invited_candidate(db_session)
     login_admin(client)
 
@@ -128,7 +153,7 @@ def test_activity_invited_candidate_empty_row(client, db_session):
     assert row["key_revealed"] is False
     assert row["question_count"] == 0
 
-    for key in ALL_FILE_KEYS:
+    for key in keys:
         assert key in row["downloads"]
         assert row["downloads"][key] is None, f"{key} should be null for fresh candidate"
 
@@ -136,7 +161,8 @@ def test_activity_invited_candidate_empty_row(client, db_session):
 def test_activity_ordered_by_candidate_id(client, db_session):
     """Response rows are ordered ascending by candidate_id."""
     seed_admin_and_config(db_session)
-    _seed_active_candidate(db_session)   # C001
+    keys = _seed_content_files(db_session)
+    _seed_active_candidate(db_session, keys[0])   # C001
     _seed_invited_candidate(db_session)  # C002
     login_admin(client)
 
@@ -144,19 +170,17 @@ def test_activity_ordered_by_candidate_id(client, db_session):
     assert r.status_code == 200, r.text
     rows = r.json()
 
-    # Should include both
     cids = [row["candidate_id"] for row in rows]
     assert "C001" in cids
     assert "C002" in cids
-
-    # Must be sorted ascending
     assert cids == sorted(cids), f"Expected ascending order, got {cids}"
 
 
 def test_activity_includes_every_candidate(client, db_session):
     """All seeded candidates appear in the activity list."""
     seed_admin_and_config(db_session)
-    _seed_active_candidate(db_session)   # C001
+    keys = _seed_content_files(db_session)
+    _seed_active_candidate(db_session, keys[0])   # C001
     _seed_invited_candidate(db_session)  # C002
     login_admin(client)
 

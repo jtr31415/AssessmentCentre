@@ -11,13 +11,31 @@ _DEFAULT_CONFIG = {
 }
 
 
+def _parse_extra_admins(raw: str) -> list[tuple[str, str]]:
+    """Parse "user1:pass1,user2:pass2" into [(user, pass), ...], skipping malformed entries."""
+    out: list[tuple[str, str]] = []
+    for chunk in (raw or "").split(","):
+        chunk = chunk.strip()
+        if not chunk or ":" not in chunk:
+            continue
+        username, password = chunk.split(":", 1)
+        username, password = username.strip(), password.strip()
+        if username and password:
+            out.append((username, password))
+    return out
+
+
+def _seed_admin(db: Session, username: str, password: str) -> None:
+    """Create the admin if no account with that username exists (never overwrites)."""
+    if not db.execute(select(Admin).filter_by(username=username)).first():
+        db.add(Admin(username=username, password_hash=hash_password(password)))
+
+
 def seed_admin_and_config(db: Session) -> None:
     s = get_settings()
-    if not db.execute(select(Admin).filter_by(username=s.initial_admin_username)).first():
-        db.add(Admin(
-            username=s.initial_admin_username,
-            password_hash=hash_password(s.initial_admin_password),
-        ))
+    _seed_admin(db, s.initial_admin_username, s.initial_admin_password)
+    for username, password in _parse_extra_admins(s.extra_admins):
+        _seed_admin(db, username, password)
     existing = set(db.execute(select(Config.key)).scalars().all())
     seeds = {
         "prep_window_days": str(s.prep_window_days),

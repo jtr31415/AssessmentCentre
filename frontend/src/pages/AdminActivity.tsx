@@ -53,16 +53,25 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+type ContentMeta = { file_key: string; label: string };
+
 export default function AdminActivity() {
   const [rows, setRows] = useState<ActivityRow[]>([]);
+  const [labels, setLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await api.get("/api/admin/activity");
-        setRows(data as ActivityRow[]);
+        const [activity, content] = await Promise.all([
+          api.get("/api/admin/activity"),
+          api.get("/api/admin/content").catch(() => [] as ContentMeta[]),
+        ]);
+        setRows(activity as ActivityRow[]);
+        const map: Record<string, string> = {};
+        for (const c of content as ContentMeta[]) map[c.file_key] = c.label;
+        setLabels(map);
       } catch (err) {
         setError((err as Error).message || "Failed to load activity.");
       } finally {
@@ -137,7 +146,7 @@ export default function AdminActivity() {
                   </th>
                   {allFileKeys.map((k) => (
                     <th key={k} scope="col" className="p-3 text-center">
-                      {k}
+                      {labels[k] ?? k}
                     </th>
                   ))}
                   <th scope="col" className="p-3 text-center">

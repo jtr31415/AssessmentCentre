@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Loader2,
   Users,
+  DollarSign,
 } from "lucide-react";
 
 type Cand = {
@@ -18,7 +19,15 @@ type Cand = {
   first_name: string;
   status: string;
   set_password_path: string | null;
+  workspace_id: string | null;
+  usd_spend_cents: number | null;
+  spend_updated_at: string | null;
 };
+
+function fmtUsd(cents: number | null) {
+  if (cents == null) return "—";
+  return `$${(cents / 100).toFixed(2)}`;
+}
 
 /* ─── Status badge ─────────────────────────────────────────────────────────── */
 function StatusBadge({ status }: { status: string }) {
@@ -105,6 +114,89 @@ function SetApiKeyControl({ candidateId }: { candidateId: string }) {
         </span>
       )}
     </form>
+  );
+}
+
+/* ─── Workspace ID control (for USD spend attribution) ───────────────────── */
+function WorkspaceControl({
+  cand,
+  onChange,
+}: {
+  cand: Cand;
+  onChange: (candidateId: string, workspaceId: string | null) => void;
+}) {
+  const [value, setValue] = useState(cand.workspace_id ?? "");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMessage("");
+    setIsError(false);
+    try {
+      const res = (await api.put(
+        `/api/admin/candidates/${cand.candidate_id}/workspace`,
+        { workspace_id: value.trim() || null }
+      )) as { workspace_id: string | null };
+      onChange(cand.candidate_id, res.workspace_id);
+      setMessage("Saved.");
+      setTimeout(() => setMessage(""), 2000);
+    } catch (err) {
+      setMessage((err as Error).message || "Failed.");
+      setIsError(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="flex items-center gap-2">
+      <label htmlFor={`ws-${cand.candidate_id}`} className="sr-only">
+        Workspace ID for {cand.candidate_id}
+      </label>
+      <input
+        id={`ws-${cand.candidate_id}`}
+        type="text"
+        placeholder="wrkspc_…"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="border border-brand-hair rounded px-2 py-1 w-32 bg-white text-[11px] font-mono text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+      />
+      <button
+        type="submit"
+        disabled={saving}
+        className="px-2.5 py-1 bg-brand-blue text-white text-[10px] font-semibold rounded hover:bg-opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+      >
+        {saving ? "…" : "Save"}
+      </button>
+      {message && (
+        <span
+          className={`text-[10px] font-semibold ${
+            isError ? "text-brand-red" : "text-emerald-700"
+          }`}
+        >
+          {message}
+        </span>
+      )}
+    </form>
+  );
+}
+
+/* ─── Spend cell ──────────────────────────────────────────────────────────── */
+function SpendCell({ cand }: { cand: Cand }) {
+  return (
+    <div className="flex flex-col">
+      <span className="font-mono font-bold tabular-numbers text-brand-ink">
+        {fmtUsd(cand.usd_spend_cents)}
+      </span>
+      {cand.spend_updated_at && (
+        <span className="text-[9px] text-brand-muted">
+          as of {new Date(cand.spend_updated_at).toLocaleDateString()}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -349,6 +441,36 @@ export default function AdminDashboard() {
     );
   }
 
+  function handleWorkspaceChange(candidateId: string, workspaceId: string | null) {
+    setCands((prev) =>
+      prev.map((c) =>
+        c.candidate_id === candidateId ? { ...c, workspace_id: workspaceId } : c
+      )
+    );
+  }
+
+  const [refreshingSpend, setRefreshingSpend] = useState(false);
+  const [spendMsg, setSpendMsg] = useState("");
+  const [spendErr, setSpendErr] = useState("");
+
+  async function refreshSpend() {
+    setRefreshingSpend(true);
+    setSpendMsg("");
+    setSpendErr("");
+    try {
+      const res = (await api.post("/api/admin/spend/refresh")) as {
+        updated: number;
+      };
+      setSpendMsg(`Spend refreshed for ${res.updated} candidate(s).`);
+      setTimeout(() => setSpendMsg(""), 4000);
+      await load();
+    } catch (err) {
+      setSpendErr((err as Error).message || "Spend refresh failed.");
+    } finally {
+      setRefreshingSpend(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* ── Create candidate card ───────────────────────────────────────────── */}
@@ -409,10 +531,36 @@ export default function AdminDashboard() {
 
       {/* ── Candidate list card ─────────────────────────────────────────────── */}
       <div className="border border-brand-hair rounded-lg p-6 bg-white space-y-4">
-        <div className="panel-title">
-          <h3 className="font-bold text-brand-blue text-sm">
-            Managed Candidate Profiles
-          </h3>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="panel-title mb-0">
+            <h3 className="font-bold text-brand-blue text-sm">
+              Managed Candidate Profiles
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {spendMsg && (
+              <span className="text-[10px] font-semibold text-emerald-700">{spendMsg}</span>
+            )}
+            {spendErr && (
+              <span className="text-[10px] font-semibold text-brand-red flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {spendErr}
+              </span>
+            )}
+            <button
+              onClick={refreshSpend}
+              disabled={refreshingSpend}
+              title="Pull live USD spend per workspace from the Anthropic Cost API"
+              className="px-3 py-1.5 text-[10px] font-bold rounded border border-brand-b4 bg-brand-b5 text-brand-blue hover:bg-brand-b4 flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {refreshingSpend ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <DollarSign className="w-3.5 h-3.5" />
+              )}
+              Refresh spend
+            </button>
+          </div>
         </div>
 
         {/* Loading state */}
@@ -458,6 +606,8 @@ export default function AdminDashboard() {
                   <th className="p-3">First Name</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">API Key (Write-Only)</th>
+                  <th className="p-3">Workspace ID</th>
+                  <th className="p-3">USD Spend</th>
                   <th className="p-3">Invite / Reset Link</th>
                   <th className="p-3">Actions</th>
                 </tr>
@@ -476,6 +626,12 @@ export default function AdminDashboard() {
                     </td>
                     <td className="p-3">
                       <SetApiKeyControl candidateId={c.candidate_id} />
+                    </td>
+                    <td className="p-3">
+                      <WorkspaceControl cand={c} onChange={handleWorkspaceChange} />
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      <SpendCell cand={c} />
                     </td>
                     <td className="p-3">
                       {c.set_password_path ? (

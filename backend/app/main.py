@@ -5,7 +5,16 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.routers import admin, auth, booking, candidate_key, content, public, slots
+from app.routers import (
+    admin,
+    admin_content,
+    auth,
+    booking,
+    candidate_key,
+    content,
+    public,
+    slots,
+)
 from app.routers.booking import admin_router as booking_admin_router
 from app.routers.booking import me_router as booking_me_router
 from app.routers.qa import admin_router as qa_admin_router
@@ -34,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(public.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(admin_content.router)
     app.include_router(slots.router)
     app.include_router(booking.router)
     app.include_router(booking_admin_router)

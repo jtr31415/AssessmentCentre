@@ -5,6 +5,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminSlots from "./pages/AdminSlots";
 import AdminQuestions from "./pages/AdminQuestions";
 import AdminActivity from "./pages/AdminActivity";
+import AdminContent from "./pages/AdminContent";
 import AdminConfig from "./pages/AdminConfig";
 import CandidateLogin from "./pages/CandidateLogin";
 import SetPassword from "./pages/SetPassword";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/admin/slots" element={<AdminSlots />} />
           <Route path="/admin/questions" element={<AdminQuestions />} />
           <Route path="/admin/activity" element={<AdminActivity />} />
+          <Route path="/admin/content" element={<AdminContent />} />
           <Route path="/admin/config" element={<AdminConfig />} />
           <Route path="/login" element={<CandidateLogin />} />
           <Route path="/set-password" element={<SetPassword />} />

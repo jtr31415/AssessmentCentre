@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Activity,
   Settings,
+  FolderUp,
   Lock,
   LogOut,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import { api } from "../api/client";
 const TABS = [
   { to: "/admin",              label: "Candidates",     Icon: Users         },
   { to: "/admin/slots",        label: "Slots",          Icon: Calendar      },
+  { to: "/admin/content",      label: "Content",        Icon: FolderUp      },
   { to: "/admin/questions",    label: "Questions",      Icon: MessageSquare },
   { to: "/admin/activity",     label: "Activity",       Icon: Activity      },
   { to: "/admin/config",       label: "Settings & Data",Icon: Settings      },
