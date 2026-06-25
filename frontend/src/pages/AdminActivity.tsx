@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { CheckIcon } from "lucide-react";
 import { api } from "../api/client";
 
 type ActivityRow = {
@@ -20,8 +20,37 @@ function fmt(ts: string | null) {
   return new Date(ts).toLocaleString();
 }
 
-function Check({ yes }: { yes: boolean }) {
-  return <span style={{ color: yes ? "green" : "#999" }}>{yes ? "✓" : "—"}</span>;
+function Tick({ yes }: { yes: boolean }) {
+  if (yes) {
+    return (
+      <span className="inline-flex items-center justify-center text-emerald-600" aria-label="Yes">
+        <CheckIcon className="w-3.5 h-3.5" aria-hidden="true" />
+        <span className="sr-only">Yes</span>
+      </span>
+    );
+  }
+  return (
+    <span className="text-brand-muted" aria-label="No">
+      —
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const lower = status.toLowerCase();
+  const cls =
+    lower === "active"
+      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+      : lower === "invited"
+      ? "bg-amber-50 text-amber-800 border-amber-200"
+      : "bg-red-50 text-red-800 border-red-300";
+  return (
+    <span
+      className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold border ${cls}`}
+    >
+      {status}
+    </span>
+  );
 }
 
 export default function AdminActivity() {
@@ -46,77 +75,152 @@ export default function AdminActivity() {
     new Set(rows.flatMap((r) => Object.keys(r.downloads)))
   ).sort();
 
+  const totalCols = 5 + allFileKeys.length + 2; // 5 fixed + file keys + Key Revealed + #Questions
+
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 16, overflowX: "auto" }}>
-      <p><Link to="/admin">← Back to admin</Link></p>
-      <h1>Activity Overview</h1>
-      {loading && <p>Loading…</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {!loading && !error && (
-        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: "#f0f0f0" }}>
-              <th style={th}>Candidate</th>
-              <th style={th}>Status</th>
-              <th style={th}>Booked Slot</th>
-              <th style={th}>Unlock At</th>
-              <th style={th}>Logged In</th>
-              {allFileKeys.map((k) => (
-                <th key={k} style={th}>{k}</th>
-              ))}
-              <th style={th}>Key Revealed</th>
-              <th style={th}>#Questions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.candidate_id} style={{ borderBottom: "1px solid #e0e0e0" }}>
-                <td style={td}>
-                  <strong>{r.first_name}</strong>
-                  <br />
-                  <span style={{ fontSize: 12, color: "#666" }}>{r.candidate_id}</span>
-                </td>
-                <td style={td}>{r.status}</td>
-                <td style={td}>{fmt(r.slot_starts_at)}</td>
-                <td style={td}>{fmt(r.unlock_at)}</td>
-                <td style={{ ...td, textAlign: "center" }}>
-                  <Check yes={r.has_logged_in} />
-                </td>
-                {allFileKeys.map((k) => (
-                  <td key={k} style={{ ...td, textAlign: "center" }}>
-                    <Check yes={r.downloads[k] != null} />
-                  </td>
+    <div className="space-y-4">
+      <div className="border border-brand-hair rounded-lg p-5 bg-white space-y-4 shadow-xs">
+        {/* Panel header */}
+        <div className="panel-title">
+          <h2 className="font-bold text-brand-blue text-sm">
+            Candidate Status Matrix
+          </h2>
+        </div>
+        <p className="text-xs text-brand-muted ml-4">
+          A comprehensive at-a-glance monitoring audit for progression tracking
+          (fairness &amp; completeness).
+        </p>
+
+        {/* Loading state */}
+        {loading && (
+          <p className="ml-4 text-xs text-brand-muted animate-pulse">
+            Loading activity data…
+          </p>
+        )}
+
+        {/* Error state */}
+        {error && (
+          <p
+            className="ml-4 text-xs text-brand-red bg-brand-redbg border border-brand-red rounded px-3 py-2"
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
+
+        {/* Table — only rendered when not loading and no error */}
+        {!loading && !error && (
+          <div className="overflow-x-auto border border-brand-hair rounded-lg ml-4">
+            <table
+              className="w-full text-left border-collapse text-xs"
+              aria-label="Candidate activity matrix"
+            >
+              <thead>
+                <tr className="bg-brand-b5 border-b border-brand-hair text-brand-blue font-bold whitespace-nowrap">
+                  <th
+                    scope="col"
+                    className="p-3 sticky left-0 bg-brand-b5 shadow-sm z-10 border-r border-brand-hair"
+                  >
+                    Candidate
+                  </th>
+                  <th scope="col" className="p-3">
+                    Status
+                  </th>
+                  <th scope="col" className="p-3">
+                    Booked Slot
+                  </th>
+                  <th scope="col" className="p-3">
+                    Unlock At
+                  </th>
+                  <th scope="col" className="p-3 text-center">
+                    Logged In
+                  </th>
+                  {allFileKeys.map((k) => (
+                    <th key={k} scope="col" className="p-3 text-center">
+                      {k}
+                    </th>
+                  ))}
+                  <th scope="col" className="p-3 text-center">
+                    Key Revealed
+                  </th>
+                  <th scope="col" className="p-3 text-center">
+                    #&nbsp;Qs
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-hair font-mono">
+                {rows.map((r) => (
+                  <tr
+                    key={r.candidate_id}
+                    className="hover:bg-neutral-50 whitespace-nowrap text-[11px] text-brand-ink"
+                  >
+                    {/* Sticky candidate column */}
+                    <td className="p-3 sticky left-0 bg-white border-r border-brand-hair shadow-xs">
+                      <div className="flex flex-col">
+                        <span className="font-bold font-sans text-brand-ink">
+                          {r.first_name}
+                        </span>
+                        <span className="text-[10px] text-brand-muted tabular-numbers">
+                          {r.candidate_id}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="p-3">
+                      <StatusBadge status={r.status} />
+                    </td>
+
+                    <td className="p-3 font-sans tabular-numbers text-brand-ink">
+                      {r.slot_starts_at ? (
+                        fmt(r.slot_starts_at)
+                      ) : (
+                        <span className="text-brand-muted">—</span>
+                      )}
+                    </td>
+
+                    <td className="p-3 tabular-numbers text-brand-ink">
+                      {r.unlock_at ? (
+                        fmt(r.unlock_at)
+                      ) : (
+                        <span className="text-brand-muted">—</span>
+                      )}
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <Tick yes={r.has_logged_in} />
+                    </td>
+
+                    {allFileKeys.map((k) => (
+                      <td key={k} className="p-3 text-center">
+                        <Tick yes={r.downloads[k] != null} />
+                      </td>
+                    ))}
+
+                    <td className="p-3 text-center">
+                      <Tick yes={r.key_revealed} />
+                    </td>
+
+                    <td className="p-3 text-center font-bold tabular-numbers text-brand-ink">
+                      {r.question_count}
+                    </td>
+                  </tr>
                 ))}
-                <td style={{ ...td, textAlign: "center" }}>
-                  <Check yes={r.key_revealed} />
-                </td>
-                <td style={{ ...td, textAlign: "center" }}>{r.question_count}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7 + allFileKeys.length} style={{ ...td, color: "#888", textAlign: "center" }}>
-                  No activity data.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      )}
+
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={totalCols}
+                      className="p-6 text-center text-brand-muted text-xs"
+                    >
+                      No activity data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-const th: React.CSSProperties = {
-  padding: "8px 10px",
-  textAlign: "left",
-  fontWeight: 600,
-  border: "1px solid #ddd",
-  whiteSpace: "nowrap",
-};
-
-const td: React.CSSProperties = {
-  padding: "6px 10px",
-  border: "1px solid #ddd",
-  verticalAlign: "top",
-};
