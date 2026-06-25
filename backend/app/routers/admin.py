@@ -1,3 +1,5 @@
+import datetime as _dt
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,9 +11,11 @@ from app.candidate_ids import allocate_candidate_id
 from app.content_manifest import MANIFEST
 from app.db import get_db
 from app.deps import current_admin
-from app.models import AuditLog, Booking, Candidate, DownloadEvent, Question, Slot
-from app.schemas import ApiKeyPaste, CreateCandidate, PurgeRequest
+from app.models import AuditLog, Booking, Candidate, Config, DownloadEvent, Question, Slot
+from app.schemas import ApiKeyPaste, ConfigSet, CreateCandidate, PurgeRequest
 from app.security import encrypt_secret, generate_token
+
+_ALLOWED_CONFIG_KEYS = {"prep_window_days", "retention_date", "qa_sla_text", "display_timezone"}
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -295,3 +299,89 @@ def clear_api_key(
     # Audit: log only the candidate_id — NEVER the key itself
     record(db, actor="admin", action="api_key_clear", detail=candidate_id)
     return {"ok": True}
+
+
+@router.get("/config")
+def get_config(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Return all config rows as a flat dict {key: value}."""
+    rows = db.execute(select(Config)).scalars().all()
+    return {row.key: row.value for row in rows}
+
+
+def _validate_config_value(key: str, value: str | None) -> str | None:
+    """Validate value for the given key; return the stored value or raise HTTPException 422."""
+    if key == "prep_window_days":
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="prep_window_days must be a positive integer",
+            ) from None
+        if parsed <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="prep_window_days must be a positive integer",
+            )
+        return value
+
+    if key == "retention_date":
+        if value is None or value == "":
+            return None
+        try:
+            _dt.date.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="retention_date must be an ISO date (YYYY-MM-DD) or empty to clear",
+            ) from None
+        return value
+
+    if key == "display_timezone":
+        if not value:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="display_timezone must not be empty",
+            )
+        try:
+            zoneinfo.ZoneInfo(value)
+        except (zoneinfo.ZoneInfoNotFoundError, KeyError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"display_timezone '{value}' is not a valid timezone",
+            ) from None
+        return value
+
+    # qa_sla_text: any non-None string
+    return value
+
+
+@router.put("/config/{key}")
+def set_config(
+    key: str,
+    body: ConfigSet,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Upsert a config row for the given key after validation."""
+    if key not in _ALLOWED_CONFIG_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="unknown config key",
+        )
+
+    stored_value = _validate_config_value(key, body.value)
+
+    row = db.execute(select(Config).where(Config.key == key)).scalar_one_or_none()
+    if row is None:
+        db.add(Config(key=key, value=stored_value))
+    else:
+        row.value = stored_value
+    db.commit()
+
+    record(db, actor="admin", action="config_update", detail=key)
+
+    return {"key": key, "value": stored_value}

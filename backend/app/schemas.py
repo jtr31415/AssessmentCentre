@@ -55,3 +55,7 @@ class AnswerCreate(BaseModel):
 
 class PurgeRequest(BaseModel):
     confirm: str
+
+
+class ConfigSet(BaseModel):
+    value: str | None = None
