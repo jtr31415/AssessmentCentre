@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Loader2,
   Users,
+  Trash2,
 } from "lucide-react";
 
 type Cand = {
@@ -134,9 +135,11 @@ interface AccountControlsState {
 function AccountControls({
   cand,
   onStatusChange,
+  onDeleted,
 }: {
   cand: Cand;
   onStatusChange: (candidateId: string, newStatus: string) => void;
+  onDeleted: (candidateId: string) => void;
 }) {
   const [state, setState] = useState<AccountControlsState>({
     busy: false,
@@ -145,6 +148,27 @@ function AccountControls({
     error: "",
     copied: false,
   });
+
+  // Delete-confirmation flow (must type the candidate ID)
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function confirmDelete() {
+    if (confirmText !== cand.candidate_id) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await api.del(`/api/admin/candidates/${cand.candidate_id}`, {
+        confirm: confirmText,
+      });
+      onDeleted(cand.candidate_id);
+    } catch (err) {
+      setDeleteError((err as Error).message || "Delete failed.");
+      setDeleting(false);
+    }
+  }
 
   function reset() {
     setState((s) => ({ ...s, busy: true, link: "", statusMsg: "", error: "" }));
@@ -269,7 +293,58 @@ function AccountControls({
             </>
           )}
         </button>
+
+        <button
+          onClick={() => {
+            setDeleteOpen((o) => !o);
+            setConfirmText("");
+            setDeleteError("");
+          }}
+          disabled={state.busy || deleting}
+          className="px-2.5 py-1 text-[10px] font-bold rounded border border-brand-red bg-brand-redbg text-brand-red hover:bg-red-100 flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Trash2 className="w-3 h-3" />
+          Delete
+        </button>
       </div>
+
+      {/* Delete confirmation */}
+      {deleteOpen && (
+        <div className="bg-brand-redbg border border-brand-red rounded p-2.5 space-y-2 max-w-sm">
+          <p className="text-[10px] text-brand-ink">
+            This permanently deletes <strong>{cand.candidate_id}</strong> and all their data
+            (booking, questions, downloads). Type{" "}
+            <code className="font-mono bg-white border border-brand-hair px-1 rounded text-brand-red">
+              {cand.candidate_id}
+            </code>{" "}
+            to confirm.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={cand.candidate_id}
+              autoComplete="off"
+              className="flex-1 text-[11px] font-mono border border-brand-hair rounded px-2 py-1 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+            <button
+              onClick={confirmDelete}
+              disabled={confirmText !== cand.candidate_id || deleting}
+              className="px-2.5 py-1 text-[10px] font-bold rounded bg-brand-red text-white hover:bg-opacity-90 flex items-center gap-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+            >
+              {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+              Delete
+            </button>
+          </div>
+          {deleteError && (
+            <p className="text-[10px] text-brand-red font-semibold flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              {deleteError}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Feedback area */}
       {state.link && (
@@ -361,6 +436,10 @@ export default function AdminDashboard() {
         c.candidate_id === candidateId ? { ...c, status: newStatus } : c
       )
     );
+  }
+
+  function handleDeleted(candidateId: string) {
+    setCands((prev) => prev.filter((c) => c.candidate_id !== candidateId));
   }
 
 
@@ -520,6 +599,7 @@ export default function AdminDashboard() {
                       <AccountControls
                         cand={c}
                         onStatusChange={handleStatusChange}
+                        onDeleted={handleDeleted}
                       />
                     </td>
                   </tr>

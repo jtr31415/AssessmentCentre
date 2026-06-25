@@ -7,6 +7,9 @@ interface ConfigMap {
   retention_date: string | null;
   qa_sla_text: string;
   display_timezone: string;
+  assessment_format: string;
+  assessment_duration: string;
+  assessment_location: string;
   [key: string]: string | null | undefined;
 }
 
@@ -41,6 +44,9 @@ export default function AdminConfig() {
   const [retDate, patchRetDate] = useFieldState("");
   const [slaText, patchSlaText] = useFieldState("");
   const [tz, patchTz] = useFieldState("");
+  const [fmt, patchFmt] = useFieldState("");
+  const [dur, patchDur] = useFieldState("");
+  const [loc, patchLoc] = useFieldState("");
 
   // Purge section
   const [purgeInput, setPurgeInput] = useState("");
@@ -60,6 +66,9 @@ export default function AdminConfig() {
         patchRetDate({ value: cfg.retention_date ?? "" });
         patchSlaText({ value: cfg.qa_sla_text ?? "" });
         patchTz({ value: cfg.display_timezone ?? "" });
+        patchFmt({ value: cfg.assessment_format ?? "" });
+        patchDur({ value: cfg.assessment_duration ?? "" });
+        patchLoc({ value: cfg.assessment_location ?? "" });
       })
       .catch((err: Error) => {
         setLoadError(err.message || "Failed to load config.");
@@ -315,6 +324,117 @@ export default function AdminConfig() {
                   }`}
                 >
                   {tz.message}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* assessment_format */}
+          <div>
+            <label
+              htmlFor="assessment_format"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Assessment Format
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="assessment_format"
+                type="text"
+                value={fmt.value}
+                onChange={(e) => patchFmt({ value: e.target.value, message: "", isError: false })}
+                placeholder="e.g. In person"
+                className="w-72 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              />
+              <button
+                onClick={() => saveField("assessment_format", fmt.value, patchFmt)}
+                disabled={fmt.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {fmt.saving ? "Saving…" : "Save"}
+              </button>
+              {fmt.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    fmt.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {fmt.message}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-brand-muted mt-1">
+              Shown to candidates on the booking page and dashboard.
+            </p>
+          </div>
+
+          {/* assessment_duration */}
+          <div>
+            <label
+              htmlFor="assessment_duration"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Assessment Duration
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="assessment_duration"
+                type="text"
+                value={dur.value}
+                onChange={(e) => patchDur({ value: e.target.value, message: "", isError: false })}
+                placeholder="e.g. 2 hours"
+                className="w-72 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              />
+              <button
+                onClick={() => saveField("assessment_duration", dur.value, patchDur)}
+                disabled={dur.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {dur.saving ? "Saving…" : "Save"}
+              </button>
+              {dur.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    dur.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {dur.message}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* assessment_location */}
+          <div>
+            <label
+              htmlFor="assessment_location"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Assessment Location
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="assessment_location"
+                type="text"
+                value={loc.value}
+                onChange={(e) => patchLoc({ value: e.target.value, message: "", isError: false })}
+                placeholder="e.g. Nordex HQ, Hamburg"
+                className="w-full sm:w-96 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              />
+              <button
+                onClick={() => saveField("assessment_location", loc.value, patchLoc)}
+                disabled={loc.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {loc.saving ? "Saving…" : "Save"}
+              </button>
+              {loc.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    loc.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {loc.message}
                 </span>
               )}
             </div>

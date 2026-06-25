@@ -22,7 +22,15 @@ from app.models import (
 from app.schemas import ApiKeyPaste, ConfigSet, CreateCandidate, PurgeRequest
 from app.security import encrypt_secret, generate_token
 
-_ALLOWED_CONFIG_KEYS = {"prep_window_days", "retention_date", "qa_sla_text", "display_timezone"}
+_ALLOWED_CONFIG_KEYS = {
+    "prep_window_days",
+    "retention_date",
+    "qa_sla_text",
+    "display_timezone",
+    "assessment_format",
+    "assessment_duration",
+    "assessment_location",
+}
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -174,6 +182,57 @@ def enable_candidate(
     db.commit()
     record(db, actor="admin", action="account_enable", detail=candidate_id)
     return {"status": cand.status}
+
+
+@router.delete("/candidates/{candidate_id}")
+def delete_candidate(
+    candidate_id: str,
+    body: PurgeRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Permanently delete a single candidate and all their data.
+
+    Requires the ``confirm`` field to exactly match the candidate's ID, to guard
+    against accidental deletion. Removes their bookings, questions, download
+    events, and candidate-attributable audit rows (admin audit is kept).
+    """
+    cand = _get_candidate_or_404(candidate_id, db)
+    if body.confirm != candidate_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="confirmation must exactly match the candidate ID",
+        )
+
+    n_downloads = db.query(DownloadEvent).filter_by(candidate_id=cand.id).count()
+    n_questions = db.query(Question).filter_by(candidate_id=cand.id).count()
+    n_bookings = db.query(Booking).filter_by(candidate_id=cand.id).count()
+
+    # FK-safe order: children before the candidate row; then their audit rows.
+    db.query(DownloadEvent).filter_by(candidate_id=cand.id).delete()
+    db.query(Question).filter_by(candidate_id=cand.id).delete()
+    db.query(Booking).filter_by(candidate_id=cand.id).delete()
+    db.query(AuditLog).filter(AuditLog.actor == candidate_id).delete(synchronize_session=False)
+    db.delete(cand)
+    db.commit()
+
+    record(
+        db,
+        actor="admin",
+        action="candidate_delete",
+        detail=(
+            f"deleted {candidate_id} ({n_bookings} bookings, {n_questions} questions, "
+            f"{n_downloads} downloads)"
+        ),
+    )
+    return {
+        "deleted": {
+            "candidate_id": candidate_id,
+            "bookings": n_bookings,
+            "questions": n_questions,
+            "download_events": n_downloads,
+        }
+    }
 
 
 @router.get("/activity")

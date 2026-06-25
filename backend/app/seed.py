@@ -8,6 +8,10 @@ from app.security import hash_password
 _DEFAULT_CONFIG = {
     "retention_date": None,
     "qa_sla_text": "Questions are answered by a person, usually within 1 working day.",
+    # Assessment session details shown to candidates (admin-editable in Settings).
+    "assessment_format": "In person",
+    "assessment_duration": "",
+    "assessment_location": "",
 }
 
 

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import Countdown from "../components/Countdown";
+import AssessmentDetails from "../components/AssessmentDetails";
 
 interface NoBooking {
   has_booking: false;
@@ -467,6 +468,8 @@ function LockedCard({
             <Countdown unlockAt={booking.unlock_at} onUnlock={onUnlock} />
           </div>
         </div>
+
+        <AssessmentDetails />
       </div>
 
       <div className="md:col-span-4">
@@ -519,6 +522,7 @@ function UnlockedState({ booking }: { booking: HasBooking }) {
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-8 space-y-6">
           <SlotCard booking={booking} />
+          <AssessmentDetails />
           <UnlockedContent />
           <ApiKeyCard />
         </div>

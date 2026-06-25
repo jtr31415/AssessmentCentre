@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { api } from "../api/client";
+import AssessmentDetails from "../components/AssessmentDetails";
 
 interface OpenSlot {
   id: number;
@@ -128,6 +129,9 @@ export default function CandidateBooking() {
       <h3 className="text-xl font-bold text-brand-blue">
         Book your assessment slot
       </h3>
+
+      {/* Assessment details (format / duration / location + prep window) */}
+      <AssessmentDetails />
 
       {/* Two-column layout: main content + sidebar */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">

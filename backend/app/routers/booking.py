@@ -269,6 +269,20 @@ def release_booking(
 # Candidate: read own booking
 # ---------------------------------------------------------------------------
 
+@me_router.get("/assessment-info")
+def assessment_info(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: Candidate = Depends(current_candidate),  # noqa: B008
+):
+    """Admin-configurable assessment details shown to candidates (booking + dashboard)."""
+    return {
+        "format": get_config_str(db, "assessment_format", "In person"),
+        "duration": get_config_str(db, "assessment_duration", ""),
+        "location": get_config_str(db, "assessment_location", ""),
+        "prep_window_days": get_config_int(db, "prep_window_days", 8),
+    }
+
+
 @me_router.get("/profile")
 def my_profile(
     cand: Candidate = Depends(current_candidate),  # noqa: B008

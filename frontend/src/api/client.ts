@@ -33,7 +33,7 @@ export const api = {
   post: (p: string, b?: unknown) => request("POST", p, b),
   patch: (p: string, b?: unknown) => request("PATCH", p, b),
   put: (p: string, b?: unknown) => request("PUT", p, b),
-  del: (p: string) => request("DELETE", p),
+  del: (p: string, b?: unknown) => request("DELETE", p, b),
   upload: (p: string, form: FormData) => upload("POST", p, form),
   uploadPut: (p: string, form: FormData) => upload("PUT", p, form),
 };
