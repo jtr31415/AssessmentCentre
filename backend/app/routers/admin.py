@@ -1,4 +1,5 @@
-from datetime import UTC, datetime, timedelta
+import zoneinfo
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -9,9 +10,11 @@ from app.candidate_ids import allocate_candidate_id
 from app.content_manifest import MANIFEST
 from app.db import get_db
 from app.deps import current_admin
-from app.models import AuditLog, Booking, Candidate, DownloadEvent, Question, Slot
-from app.schemas import ApiKeyPaste, CreateCandidate
+from app.models import AuditLog, Booking, Candidate, Config, DownloadEvent, Question, Slot
+from app.schemas import ApiKeyPaste, ConfigSet, CreateCandidate, PurgeRequest
 from app.security import encrypt_secret, generate_token
+
+_ALLOWED_CONFIG_KEYS = {"prep_window_days", "retention_date", "qa_sla_text", "display_timezone"}
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -227,6 +230,58 @@ def get_activity(
     return rows
 
 
+@router.post("/purge")
+def purge_all_candidate_data(
+    body: PurgeRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Right to erasure: delete all candidate data in FK-safe order, in one transaction.
+
+    Keeps: admin accounts, config table, admin-actor audit rows.
+    Requires exact confirmation phrase to prevent accidental data loss.
+    """
+    if body.confirm != "PURGE ALL CANDIDATE DATA":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="confirmation phrase did not match",
+        )
+
+    # Capture counts BEFORE deleting (within the same transaction)
+    n_download_events = db.query(DownloadEvent).count()
+    n_questions = db.query(Question).count()
+    n_bookings = db.query(Booking).count()
+    n_candidates = db.query(Candidate).count()
+    n_audit_rows = db.query(AuditLog).filter(AuditLog.actor != "admin").count()
+
+    # Delete in FK-safe order: children before parents; candidate-attributable audit rows last
+    db.query(DownloadEvent).delete()
+    db.query(Question).delete()
+    db.query(Booking).delete()
+    db.query(Candidate).delete()
+    db.query(AuditLog).filter(AuditLog.actor != "admin").delete(synchronize_session=False)
+
+    db.commit()
+
+    # Audit the purge itself (after commit so this row survives)
+    detail = (
+        f"purged {n_candidates} candidates, {n_bookings} bookings, "
+        f"{n_questions} questions, {n_download_events} download_events, "
+        f"{n_audit_rows} audit_rows"
+    )
+    record(db, actor="admin", action="data_purge", detail=detail)
+
+    return {
+        "deleted": {
+            "candidates": n_candidates,
+            "bookings": n_bookings,
+            "questions": n_questions,
+            "download_events": n_download_events,
+            "audit_rows": n_audit_rows,
+        }
+    }
+
+
 @router.delete("/candidates/{candidate_id}/api-key")
 def clear_api_key(
     candidate_id: str,
@@ -243,3 +298,89 @@ def clear_api_key(
     # Audit: log only the candidate_id — NEVER the key itself
     record(db, actor="admin", action="api_key_clear", detail=candidate_id)
     return {"ok": True}
+
+
+@router.get("/config")
+def get_config(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Return all config rows as a flat dict {key: value}."""
+    rows = db.execute(select(Config)).scalars().all()
+    return {row.key: row.value for row in rows}
+
+
+def _validate_config_value(key: str, value: str | None) -> str | None:
+    """Validate value for the given key; return the stored value or raise HTTPException 422."""
+    if key == "prep_window_days":
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="prep_window_days must be a positive integer",
+            ) from None
+        if parsed <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="prep_window_days must be a positive integer",
+            )
+        return value
+
+    if key == "retention_date":
+        if value is None or value == "":
+            return None
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="retention_date must be an ISO date (YYYY-MM-DD) or empty to clear",
+            ) from None
+        return value
+
+    if key == "display_timezone":
+        if not value:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="display_timezone must not be empty",
+            )
+        try:
+            zoneinfo.ZoneInfo(value)
+        except (zoneinfo.ZoneInfoNotFoundError, KeyError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"display_timezone '{value}' is not a valid timezone",
+            ) from None
+        return value
+
+    # qa_sla_text: any non-None string
+    return value
+
+
+@router.put("/config/{key}")
+def set_config(
+    key: str,
+    body: ConfigSet,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Upsert a config row for the given key after validation."""
+    if key not in _ALLOWED_CONFIG_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="unknown config key",
+        )
+
+    stored_value = _validate_config_value(key, body.value)
+
+    row = db.execute(select(Config).where(Config.key == key)).scalar_one_or_none()
+    if row is None:
+        db.add(Config(key=key, value=stored_value))
+    else:
+        row.value = stored_value
+    db.commit()
+
+    record(db, actor="admin", action="config_update", detail=key)
+
+    return {"key": key, "value": stored_value}

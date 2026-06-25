@@ -51,3 +51,11 @@ class QuestionCreate(BaseModel):
 
 class AnswerCreate(BaseModel):
     answer: str
+
+
+class PurgeRequest(BaseModel):
+    confirm: str
+
+
+class ConfigSet(BaseModel):
+    value: str | None = None

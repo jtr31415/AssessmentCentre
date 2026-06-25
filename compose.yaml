@@ -35,7 +35,25 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  backup:
+    image: postgres:16
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - backups:/backups
+    command: >
+      sh -c 'while true; do sh /backup.sh || echo backup failed; sleep 86400; done'
+    restart: unless-stopped
+
 volumes:
   pgdata:
   caddy_data:
   caddy_config:
+  backups:
