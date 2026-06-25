@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -15,6 +16,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     env_file: .env
     depends_on:
       db:
@@ -25,6 +27,7 @@ services:
 
   caddy:
     image: caddy:2
+    restart: unless-stopped
     depends_on:
       - backend
     ports:
