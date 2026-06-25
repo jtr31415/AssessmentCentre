@@ -151,6 +151,29 @@ class TestPutDisplayTimezone:
 
 
 # ---------------------------------------------------------------------------
+# PUT /api/admin/config/{key} — qa_sla_text
+# ---------------------------------------------------------------------------
+
+
+class TestPutQaSlaText:
+    def test_put_qa_sla_text_valid(self, client, db_session):
+        """PUT qa_sla_text → 200; GET reflects updated value."""
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        r = client.put(
+            "/api/admin/config/qa_sla_text",
+            json={"value": "Please respond within 24 hours"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["key"] == "qa_sla_text"
+        assert body["value"] == "Please respond within 24 hours"
+        # Verify GET reflects the update
+        get_r = client.get("/api/admin/config")
+        assert get_r.json()["qa_sla_text"] == "Please respond within 24 hours"
+
+
+# ---------------------------------------------------------------------------
 # PUT /api/admin/config/{key} — unknown key
 # ---------------------------------------------------------------------------
 

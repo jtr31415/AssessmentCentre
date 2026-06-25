@@ -1,6 +1,5 @@
-import datetime as _dt
 import zoneinfo
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -332,7 +331,7 @@ def _validate_config_value(key: str, value: str | None) -> str | None:
         if value is None or value == "":
             return None
         try:
-            _dt.date.fromisoformat(value)
+            date.fromisoformat(value)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
