@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import {
   Plus,
@@ -12,6 +12,7 @@ import {
   Loader2,
   Users,
   Trash2,
+  MoreVertical,
 } from "lucide-react";
 
 type Cand = {
@@ -19,6 +20,7 @@ type Cand = {
   first_name: string;
   status: string;
   set_password_path: string | null;
+  api_key_last4: string | null;
   booked_slot_id: number | null;
   booked_slot_at: string | null;
   unlock_at: string | null;
@@ -61,7 +63,13 @@ interface KeyRowState {
   isError: boolean;
 }
 
-function SetApiKeyControl({ candidateId }: { candidateId: string }) {
+function SetApiKeyControl({
+  candidateId,
+  onSaved,
+}: {
+  candidateId: string;
+  onSaved?: () => void;
+}) {
   const [state, setState] = useState<KeyRowState>({
     value: "",
     saving: false,
@@ -78,6 +86,7 @@ function SetApiKeyControl({ candidateId }: { candidateId: string }) {
         api_key: state.value,
       });
       setState({ value: "", saving: false, message: "Key saved.", isError: false });
+      onSaved?.();
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -148,6 +157,19 @@ function AccountControls({
     error: "",
     copied: false,
   });
+
+  // Actions dropdown
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   // Delete-confirmation flow (must type the candidate ID)
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -250,62 +272,88 @@ function AccountControls({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Action buttons */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* Actions dropdown (in-flow so it can't be clipped by the table's scroll area) */}
+      <div ref={menuRef}>
         <button
-          onClick={resetPassword}
-          disabled={state.busy}
-          className="px-2.5 py-1 text-[10px] font-semibold rounded border border-brand-b4 bg-brand-b5 text-brand-blue hover:bg-brand-b4 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
-        >
-          <RefreshCw className="w-3 h-3" />
-          Reset password
-        </button>
-
-        {isInvited && (
-          <button
-            onClick={reissueInvite}
-            disabled={state.busy}
-            className="px-2.5 py-1 text-[10px] font-semibold rounded border border-brand-b4 bg-brand-b5 text-brand-blue hover:bg-brand-b4 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
-          >
-            <RefreshCw className="w-3 h-3" />
-            Re-issue invite
-          </button>
-        )}
-
-        <button
-          onClick={toggleDisable}
-          disabled={state.busy}
-          className={`px-2.5 py-1 text-[10px] font-bold rounded border flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-            isDisabled
-              ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
-              : "bg-brand-redbg text-brand-red border-brand-red hover:bg-red-100"
-          }`}
-        >
-          {isDisabled ? (
-            <>
-              <Unlock className="w-3 h-3" />
-              Enable
-            </>
-          ) : (
-            <>
-              <Lock className="w-3 h-3" />
-              Disable
-            </>
-          )}
-        </button>
-
-        <button
-          onClick={() => {
-            setDeleteOpen((o) => !o);
-            setConfirmText("");
-            setDeleteError("");
-          }}
+          onClick={() => setMenuOpen((o) => !o)}
           disabled={state.busy || deleting}
-          className="px-2.5 py-1 text-[10px] font-bold rounded border border-brand-red bg-brand-redbg text-brand-red hover:bg-red-100 flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="px-2.5 py-1 text-[10px] font-bold rounded border border-brand-hair bg-white text-brand-ink hover:bg-neutral-50 flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <Trash2 className="w-3 h-3" />
-          Delete
+          <MoreVertical className="w-3 h-3" />
+          Actions
         </button>
+
+        {menuOpen && (
+          <div
+            role="menu"
+            className="mt-1 w-48 bg-white border border-brand-hair rounded-lg shadow-sm py-1"
+          >
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                resetPassword();
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-ink hover:bg-brand-b5 flex items-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-brand-blue" />
+              Reset password
+            </button>
+
+            {isInvited && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  reissueInvite();
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-brand-ink hover:bg-brand-b5 flex items-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-brand-blue" />
+                Re-issue invite
+              </button>
+            )}
+
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                toggleDisable();
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-ink hover:bg-brand-b5 flex items-center gap-2 cursor-pointer"
+            >
+              {isDisabled ? (
+                <>
+                  <Unlock className="w-3.5 h-3.5 text-emerald-700" />
+                  Enable account
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-brand-red" />
+                  Disable account
+                </>
+              )}
+            </button>
+
+            <div className="border-t border-brand-hair my-1" />
+
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setDeleteOpen(true);
+                setConfirmText("");
+                setDeleteError("");
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-red font-semibold hover:bg-brand-redbg flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete candidate
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Delete confirmation */}
@@ -581,7 +629,19 @@ export default function AdminDashboard() {
                       )}
                     </td>
                     <td className="p-3">
-                      <SetApiKeyControl candidateId={c.candidate_id} />
+                      {c.api_key_last4 ? (
+                        <p className="text-[10px] text-brand-muted mb-1.5">
+                          Current:{" "}
+                          <code className="font-mono text-brand-ink">
+                            ••••{c.api_key_last4}
+                          </code>
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-brand-muted italic mb-1.5">
+                          No key set
+                        </p>
+                      )}
+                      <SetApiKeyControl candidateId={c.candidate_id} onSaved={load} />
                     </td>
                     <td className="p-3">
                       {c.set_password_path ? (

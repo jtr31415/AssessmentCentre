@@ -20,7 +20,7 @@ from app.models import (
     Slot,
 )
 from app.schemas import ApiKeyPaste, ConfigSet, CreateCandidate, PurgeRequest
-from app.security import encrypt_secret, generate_token
+from app.security import decrypt_secret, encrypt_secret, generate_token
 
 _ALLOWED_CONFIG_KEYS = {
     "prep_window_days",
@@ -81,12 +81,20 @@ def list_candidates(db: Session = Depends(get_db), _: object = Depends(current_a
     result = []
     for c in rows:
         bk = booking_map.get(c.id)
+        # Last 4 chars of the API key, for verification only (never the full key).
+        api_key_last4 = None
+        if c.api_key_encrypted:
+            try:
+                api_key_last4 = decrypt_secret(c.api_key_encrypted)[-4:]
+            except Exception:
+                api_key_last4 = None
         result.append(
             {
                 "candidate_id": c.candidate_id,
                 "first_name": c.first_name,
                 "status": c.status,
                 "has_password": c.password_hash is not None,
+                "api_key_last4": api_key_last4,
                 "set_password_path": _set_password_path(c.password_set_token)
                 if c.password_set_token
                 else None,
