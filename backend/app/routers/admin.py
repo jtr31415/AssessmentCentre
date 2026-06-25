@@ -10,7 +10,7 @@ from app.content_manifest import MANIFEST
 from app.db import get_db
 from app.deps import current_admin
 from app.models import AuditLog, Booking, Candidate, DownloadEvent, Question, Slot
-from app.schemas import ApiKeyPaste, CreateCandidate
+from app.schemas import ApiKeyPaste, CreateCandidate, PurgeRequest
 from app.security import encrypt_secret, generate_token
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -225,6 +225,58 @@ def get_activity(
         })
 
     return rows
+
+
+@router.post("/purge")
+def purge_all_candidate_data(
+    body: PurgeRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    _: object = Depends(current_admin),  # noqa: B008
+):
+    """Right to erasure: delete all candidate data in FK-safe order, in one transaction.
+
+    Keeps: admin accounts, config table, admin-actor audit rows.
+    Requires exact confirmation phrase to prevent accidental data loss.
+    """
+    if body.confirm != "PURGE ALL CANDIDATE DATA":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="confirmation phrase did not match",
+        )
+
+    # Capture counts BEFORE deleting (within the same transaction)
+    n_download_events = db.query(DownloadEvent).count()
+    n_questions = db.query(Question).count()
+    n_bookings = db.query(Booking).count()
+    n_candidates = db.query(Candidate).count()
+    n_audit_rows = db.query(AuditLog).filter(AuditLog.actor != "admin").count()
+
+    # Delete in FK-safe order: children before parents; candidate-attributable audit rows last
+    db.query(DownloadEvent).delete()
+    db.query(Question).delete()
+    db.query(Booking).delete()
+    db.query(Candidate).delete()
+    db.query(AuditLog).filter(AuditLog.actor != "admin").delete(synchronize_session=False)
+
+    db.commit()
+
+    # Audit the purge itself (after commit so this row survives)
+    detail = (
+        f"purged {n_candidates} candidates, {n_bookings} bookings, "
+        f"{n_questions} questions, {n_download_events} download_events, "
+        f"{n_audit_rows} audit_rows"
+    )
+    record(db, actor="admin", action="data_purge", detail=detail)
+
+    return {
+        "deleted": {
+            "candidates": n_candidates,
+            "bookings": n_bookings,
+            "questions": n_questions,
+            "download_events": n_download_events,
+            "audit_rows": n_audit_rows,
+        }
+    }
 
 
 @router.delete("/candidates/{candidate_id}/api-key")
