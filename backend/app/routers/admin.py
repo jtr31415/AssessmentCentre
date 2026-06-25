@@ -61,21 +61,35 @@ def create_candidate(
 @router.get("/candidates")
 def list_candidates(db: Session = Depends(get_db), _: object = Depends(current_admin)):  # noqa: B008
     rows = db.execute(select(Candidate).order_by(Candidate.candidate_id)).scalars().all()
-    return [
-        {
-            "candidate_id": c.candidate_id,
-            "first_name": c.first_name,
-            "status": c.status,
-            "has_password": c.password_hash is not None,
-            "set_password_path": _set_password_path(c.password_set_token)
-            if c.password_set_token
-            else None,
-            "workspace_id": c.workspace_id,
-            "usd_spend_cents": c.usd_spend_cents,
-            "spend_updated_at": c.spend_updated_at.isoformat() if c.spend_updated_at else None,
-        }
-        for c in rows
-    ]
+
+    # Map candidate pk -> their booking (slot start + id + unlock), if any.
+    booking_rows = db.execute(
+        select(Booking.candidate_id, Booking.slot_id, Booking.unlock_at, Slot.starts_at)
+        .join(Slot, Booking.slot_id == Slot.id)
+    ).all()
+    booking_map = {b.candidate_id: b for b in booking_rows}
+
+    result = []
+    for c in rows:
+        bk = booking_map.get(c.id)
+        result.append(
+            {
+                "candidate_id": c.candidate_id,
+                "first_name": c.first_name,
+                "status": c.status,
+                "has_password": c.password_hash is not None,
+                "set_password_path": _set_password_path(c.password_set_token)
+                if c.password_set_token
+                else None,
+                "workspace_id": c.workspace_id,
+                "usd_spend_cents": c.usd_spend_cents,
+                "spend_updated_at": c.spend_updated_at.isoformat() if c.spend_updated_at else None,
+                "booked_slot_id": bk.slot_id if bk else None,
+                "booked_slot_at": bk.starts_at.isoformat() if bk else None,
+                "unlock_at": bk.unlock_at.isoformat() if bk else None,
+            }
+        )
+    return result
 
 
 @router.put("/candidates/{candidate_id}/api-key")

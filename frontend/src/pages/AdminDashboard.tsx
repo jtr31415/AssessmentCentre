@@ -22,11 +22,25 @@ type Cand = {
   workspace_id: string | null;
   usd_spend_cents: number | null;
   spend_updated_at: string | null;
+  booked_slot_id: number | null;
+  booked_slot_at: string | null;
+  unlock_at: string | null;
 };
 
 function fmtUsd(cents: number | null) {
   if (cents == null) return "—";
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function fmtSlot(ts: string | null) {
+  if (!ts) return null;
+  return new Date(ts).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /* ─── Status badge ─────────────────────────────────────────────────────────── */
@@ -605,6 +619,7 @@ export default function AdminDashboard() {
                   <th className="p-3">ID</th>
                   <th className="p-3">First Name</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Booked Slot</th>
                   <th className="p-3">API Key (Write-Only)</th>
                   <th className="p-3">Workspace ID</th>
                   <th className="p-3">USD Spend</th>
@@ -623,6 +638,17 @@ export default function AdminDashboard() {
                     </td>
                     <td className="p-3 whitespace-nowrap">
                       <StatusBadge status={c.status} />
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {c.booked_slot_at ? (
+                        <span className="text-brand-ink tabular-numbers font-medium">
+                          {fmtSlot(c.booked_slot_at)}
+                        </span>
+                      ) : (
+                        <span className="text-brand-muted italic text-[10px]">
+                          Not booked
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
                       <SetApiKeyControl candidateId={c.candidate_id} />
