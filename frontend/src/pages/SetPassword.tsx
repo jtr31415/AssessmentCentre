@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, Copy } from "lucide-react";
 import { api } from "../api/client";
 
 export default function SetPassword() {
@@ -9,6 +9,8 @@ export default function SetPassword() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [candidateId, setCandidateId] = useState("");
+  const [copied, setCopied] = useState(false);
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
 
@@ -25,13 +27,23 @@ export default function SetPassword() {
     }
     setBusy(true);
     try {
-      await api.post("/api/auth/candidate/set-password", { token, password: newPassword });
+      const res = (await api.post("/api/auth/candidate/set-password", {
+        token,
+        password: newPassword,
+      })) as { candidate_id?: string };
+      setCandidateId(res.candidate_id ?? "");
       setSuccess(true);
     } catch (x) {
       setErr(x instanceof Error ? x.message : String(x));
     } finally {
       setBusy(false);
     }
+  }
+
+  function copyId() {
+    navigator.clipboard.writeText(candidateId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -54,12 +66,41 @@ export default function SetPassword() {
               <div>
                 <p className="font-semibold">Password set successfully!</p>
                 <p className="text-xs text-emerald-700 mt-1">
-                  Your candidate account is now active. You may now log in.
+                  Your candidate account is now active.
                 </p>
               </div>
             </div>
+
+            {candidateId && (
+              <div className="p-4 bg-brand-b5 border border-brand-b4 rounded">
+                <p className="text-[10px] uppercase tracking-widest text-brand-muted font-bold mb-1.5">
+                  Your Candidate ID — save this
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 font-mono font-bold text-lg text-brand-blue tabular-numbers select-all">
+                    {candidateId}
+                  </code>
+                  <button
+                    onClick={copyId}
+                    title="Copy"
+                    className="p-1.5 rounded text-brand-muted hover:text-brand-ink hover:bg-white cursor-pointer flex-shrink-0"
+                  >
+                    {copied ? (
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-[11px] text-brand-muted mt-2">
+                  You'll need this ID together with your password every time you log in.
+                  Note it somewhere safe now.
+                </p>
+              </div>
+            )}
+
             <Link
-              to="/login"
+              to={candidateId ? `/login?id=${encodeURIComponent(candidateId)}` : "/login"}
               className="block w-full text-center py-2.5 bg-brand-blue hover:bg-opacity-90 text-white font-medium text-sm rounded transition"
             >
               Proceed to Login

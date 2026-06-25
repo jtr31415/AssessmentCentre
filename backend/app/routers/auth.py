@@ -54,7 +54,8 @@ def candidate_set_password(body: SetPassword, db: Session = Depends(get_db)):  #
     cand.password_set_token_expires_at = None
     db.commit()
     record(db, actor=cand.candidate_id, action="password_set", detail="password set via token")
-    return {"ok": True}
+    # Return the candidate_id so the UI can show it — they need it to log in.
+    return {"ok": True, "candidate_id": cand.candidate_id}
 
 
 @router.post("/candidate/login")

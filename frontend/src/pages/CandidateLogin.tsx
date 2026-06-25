@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 import { api } from "../api/client";
 
 export default function CandidateLogin() {
-  const [candidateId, setCandidateId] = useState("");
+  const [searchParams] = useSearchParams();
+  const [candidateId, setCandidateId] = useState(searchParams.get("id") ?? "");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
