@@ -10,6 +10,8 @@ interface ConfigMap {
   assessment_format: string;
   assessment_duration: string;
   assessment_location: string;
+  api_docs_url: string;
+  api_tier: string;
   [key: string]: string | null | undefined;
 }
 
@@ -47,6 +49,8 @@ export default function AdminConfig() {
   const [fmt, patchFmt] = useFieldState("");
   const [dur, patchDur] = useFieldState("");
   const [loc, patchLoc] = useFieldState("");
+  const [docsUrl, patchDocsUrl] = useFieldState("");
+  const [apiTier, patchApiTier] = useFieldState("");
 
   // Purge section
   const [purgeInput, setPurgeInput] = useState("");
@@ -69,6 +73,8 @@ export default function AdminConfig() {
         patchFmt({ value: cfg.assessment_format ?? "" });
         patchDur({ value: cfg.assessment_duration ?? "" });
         patchLoc({ value: cfg.assessment_location ?? "" });
+        patchDocsUrl({ value: cfg.api_docs_url ?? "" });
+        patchApiTier({ value: cfg.api_tier ?? "" });
       })
       .catch((err: Error) => {
         setLoadError(err.message || "Failed to load config.");
@@ -438,6 +444,88 @@ export default function AdminConfig() {
                 </span>
               )}
             </div>
+          </div>
+
+          {/* api_docs_url */}
+          <div>
+            <label
+              htmlFor="api_docs_url"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              API Documentation Link
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="api_docs_url"
+                type="url"
+                value={docsUrl.value}
+                onChange={(e) =>
+                  patchDocsUrl({ value: e.target.value, message: "", isError: false })
+                }
+                placeholder="https://docs.claude.com"
+                className="w-full sm:w-96 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              />
+              <button
+                onClick={() => saveField("api_docs_url", docsUrl.value, patchDocsUrl)}
+                disabled={docsUrl.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {docsUrl.saving ? "Saving…" : "Save"}
+              </button>
+              {docsUrl.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    docsUrl.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {docsUrl.message}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-brand-muted mt-1">
+              Shown to candidates next to their API key.
+            </p>
+          </div>
+
+          {/* api_tier */}
+          <div>
+            <label
+              htmlFor="api_tier"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              API Tier (rate-limit guidance)
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                id="api_tier"
+                type="text"
+                value={apiTier.value}
+                onChange={(e) =>
+                  patchApiTier({ value: e.target.value, message: "", isError: false })
+                }
+                placeholder="e.g. Tier 1"
+                className="w-72 text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              />
+              <button
+                onClick={() => saveField("api_tier", apiTier.value, patchApiTier)}
+                disabled={apiTier.saving}
+                className="px-4 py-2 bg-brand-blue text-white hover:bg-opacity-90 text-xs font-semibold rounded cursor-pointer disabled:opacity-50"
+              >
+                {apiTier.saving ? "Saving…" : "Save"}
+              </button>
+              {apiTier.message && (
+                <span
+                  className={`text-xs font-medium ${
+                    apiTier.isError ? "text-brand-red" : "text-emerald-700"
+                  }`}
+                >
+                  {apiTier.message}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-brand-muted mt-1">
+              Tells candidates which rate-limit tier their key is on.
+            </p>
           </div>
         </div>
       </div>

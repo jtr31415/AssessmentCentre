@@ -9,12 +9,26 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.audit import record
+from app.config_helpers import get_config_str
 from app.content_access import require_unlocked
 from app.db import get_db
+from app.deps import current_candidate
 from app.models import Candidate
 from app.security import decrypt_secret
 
 router = APIRouter(prefix="/api/me", tags=["candidate-key"])
+
+
+@router.get("/api-info")
+def api_info(
+    db: Session = Depends(get_db),  # noqa: B008
+    _: Candidate = Depends(current_candidate),  # noqa: B008
+):
+    """Admin-editable API access info shown to candidates next to their key."""
+    return {
+        "docs_url": get_config_str(db, "api_docs_url", ""),
+        "tier": get_config_str(db, "api_tier", ""),
+    }
 
 _KEY_USAGE_NOTE = (
     "This key is for the LLM features your application uses at runtime. "

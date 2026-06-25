@@ -12,6 +12,9 @@ _DEFAULT_CONFIG = {
     "assessment_format": "In person",
     "assessment_duration": "",
     "assessment_location": "",
+    # API access info shown to candidates next to their key (admin-editable).
+    "api_docs_url": "https://docs.claude.com",
+    "api_tier": "",
 }
 
 

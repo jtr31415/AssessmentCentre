@@ -30,6 +30,8 @@ _ALLOWED_CONFIG_KEYS = {
     "assessment_format",
     "assessment_duration",
     "assessment_location",
+    "api_docs_url",
+    "api_tier",
 }
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])

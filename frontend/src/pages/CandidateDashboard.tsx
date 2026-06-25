@@ -212,6 +212,7 @@ function ApiKeyCard() {
   const [error, setError] = useState("");
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [apiInfo, setApiInfo] = useState<{ docs_url: string; tier: string } | null>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -220,6 +221,14 @@ function ApiKeyCard() {
     },
     []
   );
+
+  // Admin-configured API access info (docs link + rate-limit tier).
+  useEffect(() => {
+    api
+      .get("/api/me/api-info")
+      .then((d) => setApiInfo(d as { docs_url: string; tier: string }))
+      .catch(() => {});
+  }, []);
 
   async function revealKey() {
     setLoading(true);
@@ -259,6 +268,29 @@ function ApiKeyCard() {
       </div>
 
       <div className="ml-4 space-y-3">
+        {apiInfo && (apiInfo.tier || apiInfo.docs_url) && (
+          <div className="text-xs text-brand-muted space-y-1 pb-1">
+            {apiInfo.tier && (
+              <p>
+                Rate-limit tier:{" "}
+                <strong className="text-brand-ink">{apiInfo.tier}</strong> — usage limits apply.
+              </p>
+            )}
+            {apiInfo.docs_url && (
+              <p>
+                <a
+                  href={apiInfo.docs_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-brand-blue underline hover:text-brand-red font-semibold"
+                >
+                  API documentation ↗
+                </a>
+              </p>
+            )}
+          </div>
+        )}
+
         {!keyInfo && !noKey && !error && (
           <button
             onClick={revealKey}

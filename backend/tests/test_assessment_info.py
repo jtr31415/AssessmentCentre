@@ -53,3 +53,27 @@ def test_candidate_assessment_info(client, db_session):
 def test_assessment_info_requires_candidate(client, db_session):
     seed_admin_and_config(db_session)
     assert client.get("/api/me/assessment-info").status_code == 401
+
+
+def test_admin_can_set_api_info(client, db_session):
+    seed_admin_and_config(db_session)
+    login_admin(client)
+    client.put("/api/admin/config/api_docs_url", json={"value": "https://example.com/docs"})
+    client.put("/api/admin/config/api_tier", json={"value": "Tier 2"})
+    cfg = client.get("/api/admin/config").json()
+    assert cfg["api_docs_url"] == "https://example.com/docs"
+    assert cfg["api_tier"] == "Tier 2"
+
+
+def test_candidate_api_info(client, db_session):
+    _candidate(client, db_session)
+    r = client.get("/api/me/api-info")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["docs_url"] == "https://docs.claude.com"  # seeded default
+    assert d["tier"] == ""
+
+
+def test_api_info_requires_candidate(client, db_session):
+    seed_admin_and_config(db_session)
+    assert client.get("/api/me/api-info").status_code == 401
