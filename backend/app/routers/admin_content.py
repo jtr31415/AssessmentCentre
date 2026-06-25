@@ -41,6 +41,7 @@ def _serialize(row: ContentFile) -> dict:
     return {
         "file_key": row.file_key,
         "label": row.label,
+        "description": row.description,
         "category": row.category,
         "original_filename": row.original_filename,
         "media_type": row.media_type,
@@ -129,6 +130,7 @@ async def upload_content_file(
     file: UploadFile = File(...),  # noqa: B008
     label: str = Form(...),  # noqa: B008
     category: str = Form(...),  # noqa: B008
+    description: str | None = Form(None),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
     _: object = Depends(current_admin),  # noqa: B008
 ):
@@ -147,6 +149,7 @@ async def upload_content_file(
     row = ContentFile(
         file_key=file_key,
         label=label,
+        description=(description or "").strip() or None,
         category=category,
         original_filename=original_filename,
         stored_filename=stored_filename,
@@ -166,13 +169,14 @@ async def replace_content_file(
     file: UploadFile | None = File(None),  # noqa: B008
     label: str | None = Form(None),  # noqa: B008
     category: str | None = Form(None),  # noqa: B008
+    description: str | None = Form(None),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
     _: object = Depends(current_admin),  # noqa: B008
 ):
-    """Update label/category and/or replace the underlying file.
+    """Update label/category/description and/or replace the underlying file.
 
     Any subset may be provided. If a new file is sent, the old on-disk file is
-    removed after the new one is written.
+    removed after the new one is written. A description of "" clears it.
     """
     row = _get_row_or_404(file_key, db)
     settings = get_settings()
@@ -185,6 +189,9 @@ async def replace_content_file(
                 detail="label must not be empty",
             )
         row.label = stripped
+
+    if description is not None:
+        row.description = description.strip() or None
 
     if category is not None:
         if category not in ALLOWED_CATEGORIES:

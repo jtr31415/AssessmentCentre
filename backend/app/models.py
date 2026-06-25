@@ -131,6 +131,7 @@ class ContentFile(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     file_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     label: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String(32))  # brief | data | reference
     original_filename: Mapped[str] = mapped_column(String(255))
     stored_filename: Mapped[str] = mapped_column(String(255))

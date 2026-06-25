@@ -44,6 +44,7 @@ def list_content(
                 {
                     "file_key": row.file_key,
                     "label": row.label,
+                    "description": row.description,
                     "category": row.category,
                 }
             )

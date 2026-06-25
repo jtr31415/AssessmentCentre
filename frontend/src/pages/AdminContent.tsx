@@ -7,12 +7,15 @@ import {
   Loader2,
   RefreshCw,
   Paperclip,
+  Check,
+  X,
 } from "lucide-react";
 import { api } from "../api/client";
 
 type ContentFile = {
   file_key: string;
   label: string;
+  description: string | null;
   category: string;
   original_filename: string;
   media_type: string;
@@ -51,6 +54,87 @@ function CategoryBadge({ category }: { category: string }) {
   );
 }
 
+/* ─── Inline per-file description editor ──────────────────────────────────── */
+function DescriptionCell({
+  file,
+  onSaved,
+}: {
+  file: ContentFile;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(file.description ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const form = new FormData();
+      form.append("description", value);
+      await api.uploadPut(`/api/admin/content/${file.file_key}`, form);
+      setEditing(false);
+      onSaved();
+    } catch {
+      // leave in edit mode so the value isn't lost
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1.5 min-w-[200px]">
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          rows={2}
+          autoFocus
+          placeholder="What is this file? Shown to candidates."
+          className="w-full text-[11px] border border-brand-hair rounded px-2 py-1 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue resize-y"
+        />
+        <div className="flex gap-1">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-2 py-0.5 text-[10px] font-bold rounded bg-brand-blue text-white hover:bg-opacity-90 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            Save
+          </button>
+          <button
+            onClick={() => {
+              setValue(file.description ?? "");
+              setEditing(false);
+            }}
+            className="px-2 py-0.5 text-[10px] font-semibold rounded border border-brand-hair text-brand-muted hover:text-brand-ink flex items-center gap-1 cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+      className="text-left max-w-[260px] cursor-pointer group"
+    >
+      {file.description ? (
+        <span className="text-[11px] text-brand-ink group-hover:text-brand-blue whitespace-pre-wrap leading-snug">
+          {file.description}
+        </span>
+      ) : (
+        <span className="text-[11px] text-brand-muted italic group-hover:text-brand-blue">
+          Add description…
+        </span>
+      )}
+    </button>
+  );
+}
+
 export default function AdminContent() {
   const [files, setFiles] = useState<ContentFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +143,7 @@ export default function AdminContent() {
   // Upload form state
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState<string>("brief");
+  const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -96,9 +181,11 @@ export default function AdminContent() {
       form.append("file", file);
       form.append("label", label.trim());
       form.append("category", category);
+      form.append("description", description.trim());
       await api.upload("/api/admin/content", form);
       setUploadSuccess(`Uploaded "${label.trim()}".`);
       setLabel("");
+      setDescription("");
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setTimeout(() => setUploadSuccess(""), 4000);
@@ -191,6 +278,23 @@ export default function AdminContent() {
 
           <div>
             <label
+              htmlFor="content-description"
+              className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
+            >
+              Description <span className="font-normal normal-case">(optional — shown to candidates)</span>
+            </label>
+            <textarea
+              id="content-description"
+              rows={2}
+              placeholder="e.g. 20 years of hourly wind speed and direction for the site."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full text-sm border border-brand-hair rounded px-3 py-2 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue resize-y"
+            />
+          </div>
+
+          <div>
+            <label
               htmlFor="content-file"
               className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
             >
@@ -273,6 +377,7 @@ export default function AdminContent() {
               <thead>
                 <tr className="bg-brand-b5 border-b border-brand-hair text-brand-blue font-bold">
                   <th className="p-3">Label</th>
+                  <th className="p-3">Description</th>
                   <th className="p-3">Category</th>
                   <th className="p-3">Filename</th>
                   <th className="p-3">Size</th>
@@ -284,6 +389,9 @@ export default function AdminContent() {
                 {files.map((f) => (
                   <tr key={f.file_key} className="hover:bg-neutral-50 align-middle">
                     <td className="p-3 font-semibold text-brand-ink">{f.label}</td>
+                    <td className="p-3">
+                      <DescriptionCell file={f} onSaved={load} />
+                    </td>
                     <td className="p-3">
                       <CategoryBadge category={f.category} />
                     </td>

@@ -156,6 +156,35 @@ class TestAdminUpload:
         labels = {row["label"] for row in rows}
         assert labels == {"Brief", "Data"}
 
+    def test_description_round_trips_to_candidate(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        r = client.post(
+            "/api/admin/content",
+            files={"file": ("brief.pdf", b"PDFDATA", "application/pdf")},
+            data={"label": "Brief", "category": "brief", "description": "Read this first."},
+        )
+        assert r.status_code == 201
+        assert r.json()["description"] == "Read this first."
+        # Admin list carries it
+        assert client.get("/api/admin/content").json()[0]["description"] == "Read this first."
+
+    def test_replace_can_update_description_only(self, client, db_session, patch_content_dir):
+        seed_admin_and_config(db_session)
+        login_admin(client)
+        key = client.post(
+            "/api/admin/content",
+            files={"file": ("a.pdf", b"x", "application/pdf")},
+            data={"label": "Brief", "category": "brief"},
+        ).json()["file_key"]
+        # Update description with no new file
+        r = client.put(f"/api/admin/content/{key}", data={"description": "Now described."})
+        assert r.status_code == 200
+        assert r.json()["description"] == "Now described."
+        # Clearing (whitespace-only strips to empty → None)
+        r2 = client.put(f"/api/admin/content/{key}", data={"description": "   "})
+        assert r2.json()["description"] is None
+
     def test_delete_removes_row_and_file(self, client, db_session, patch_content_dir):
         seed_admin_and_config(db_session)
         login_admin(client)
@@ -244,7 +273,7 @@ class TestCandidateListDownload:
         entries = r.json()
         assert len(entries) == 1
         entry = entries[0]
-        assert set(entry.keys()) == {"file_key", "label", "category"}
+        assert set(entry.keys()) == {"file_key", "label", "description", "category"}
         # internal fields must NOT leak
         assert "stored_filename" not in entry
         assert "media_type" not in entry

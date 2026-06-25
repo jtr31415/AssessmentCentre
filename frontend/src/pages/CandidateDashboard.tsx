@@ -34,6 +34,7 @@ type BookingState = NoBooking | HasBooking;
 interface ContentItem {
   file_key: string;
   label: string;
+  description: string | null;
   category: string;
 }
 
@@ -69,34 +70,9 @@ function formatDateTime(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Tabbed content panel (driven by the REAL /api/content files)
+// Content panel — category tabs, each file shows its description + download.
+// (No in-browser preview: download is the single, reliable action.)
 // ---------------------------------------------------------------------------
-
-const MAX_PREVIEW_ROWS = 200;
-
-interface CsvPreview {
-  kind: "csv";
-  rows: string[][];
-  truncated: boolean;
-}
-interface PdfPreview {
-  kind: "pdf";
-  url: string;
-}
-interface UnsupportedPreview {
-  kind: "unsupported";
-}
-type Preview = CsvPreview | PdfPreview | UnsupportedPreview;
-
-function parseCsv(text: string): { rows: string[][]; truncated: boolean } {
-  const lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
-  const truncated = lines.length > MAX_PREVIEW_ROWS;
-  const slice = truncated ? lines.slice(0, MAX_PREVIEW_ROWS) : lines;
-  return {
-    rows: slice.map((line) => line.split(",")),
-    truncated,
-  };
-}
 
 function ContentTabs({ items }: { items: ContentItem[] }) {
   const grouped: Record<string, ContentItem[]> = {};
@@ -112,74 +88,6 @@ function ContentTabs({ items }: { items: ContentItem[] }) {
   ];
 
   const [activeTab, setActiveTab] = useState<string>(categories[0] ?? "");
-  const [selectedKey, setSelectedKey] = useState<string>(
-    grouped[categories[0]]?.[0]?.file_key ?? ""
-  );
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState("");
-  const objectUrlRef = useRef<string | null>(null);
-
-  const revokeUrl = useCallback(() => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-  }, []);
-
-  // Fetch + build the preview whenever the selected file changes.
-  useEffect(() => {
-    if (!selectedKey) return;
-    let cancelled = false;
-    setPreview(null);
-    setPreviewError("");
-    setPreviewLoading(true);
-
-    (async () => {
-      try {
-        const res = await fetch("/api/content/" + selectedKey, {
-          credentials: "include",
-        });
-        if (!res.ok) {
-          throw new Error(`Could not load preview (${res.status})`);
-        }
-        const blob = await res.blob();
-        if (cancelled) return;
-
-        const type = blob.type.toLowerCase();
-        if (type.includes("pdf")) {
-          revokeUrl();
-          const url = URL.createObjectURL(blob);
-          objectUrlRef.current = url;
-          setPreview({ kind: "pdf", url });
-        } else if (type.includes("csv") || type.startsWith("text/")) {
-          const text = await blob.text();
-          if (cancelled) return;
-          const { rows, truncated } = parseCsv(text);
-          setPreview({ kind: "csv", rows, truncated });
-        } else {
-          setPreview({ kind: "unsupported" });
-        }
-      } catch (e) {
-        if (!cancelled) setPreviewError((e as Error).message);
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedKey, revokeUrl]);
-
-  // Revoke any outstanding object URL on unmount.
-  useEffect(() => revokeUrl, [revokeUrl]);
-
-  function selectTab(cat: string) {
-    setActiveTab(cat);
-    setSelectedKey(grouped[cat]?.[0]?.file_key ?? "");
-  }
-
   const activeFiles = grouped[activeTab] ?? [];
 
   return (
@@ -198,7 +106,7 @@ function ContentTabs({ items }: { items: ContentItem[] }) {
               key={cat}
               role="tab"
               aria-selected={isActive}
-              onClick={() => selectTab(cat)}
+              onClick={() => setActiveTab(cat)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors cursor-pointer ${
                 isActive
                   ? "text-brand-blue border-brand-blue"
@@ -214,123 +122,35 @@ function ContentTabs({ items }: { items: ContentItem[] }) {
 
       {/* File list for the active tab */}
       <div className="p-5 space-y-3">
-        {activeFiles.map((file) => {
-          const isSelected = file.file_key === selectedKey;
-          return (
-            <div
-              key={file.file_key}
-              className={`flex items-center justify-between gap-4 border rounded-lg p-4 transition-colors ${
-                isSelected
-                  ? "bg-brand-b5 border-brand-b4"
-                  : "bg-white border-brand-hair"
-              }`}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <FileText
-                  className="w-4 h-4 text-brand-muted flex-shrink-0"
-                  aria-hidden={true}
-                />
-                <span className="text-sm font-medium text-brand-ink truncate">
-                  {file.label}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => setSelectedKey(file.file_key)}
-                  aria-pressed={isSelected}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded transition-colors cursor-pointer ${
-                    isSelected
-                      ? "bg-brand-blue text-white"
-                      : "text-brand-blue hover:bg-brand-b5"
-                  }`}
-                >
-                  {isSelected ? "Previewing" : "Preview"}
-                </button>
-                <a
-                  href={"/api/content/" + file.file_key}
-                  download
-                  className="flex items-center gap-1.5 text-xs font-semibold text-brand-blue border border-brand-hair rounded px-3 py-1.5 hover:bg-brand-b5 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" aria-hidden={true} />
-                  Download
-                </a>
+        {activeFiles.map((file) => (
+          <div
+            key={file.file_key}
+            className="flex items-start justify-between gap-4 border border-brand-hair rounded-lg p-4 bg-white"
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <FileText
+                className="w-4 h-4 text-brand-muted flex-shrink-0 mt-0.5"
+                aria-hidden={true}
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-brand-ink">{file.label}</p>
+                {file.description && (
+                  <p className="text-xs text-brand-muted mt-1 leading-relaxed whitespace-pre-wrap">
+                    {file.description}
+                  </p>
+                )}
               </div>
             </div>
-          );
-        })}
-
-        {/* Inline preview area */}
-        <div className="pt-2">
-          {previewLoading && (
-            <p className="text-sm text-brand-muted py-6 text-center">
-              Loading preview…
-            </p>
-          )}
-
-          {previewError && !previewLoading && (
-            <p
-              className="text-sm text-brand-red bg-brand-redbg border border-brand-red rounded p-3"
-              role="alert"
+            <a
+              href={"/api/content/" + file.file_key}
+              download
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-blue rounded px-3 py-2 hover:opacity-90 transition-opacity flex-shrink-0"
             >
-              {previewError}
-            </p>
-          )}
-
-          {!previewLoading && !previewError && preview?.kind === "pdf" && (
-            <iframe
-              src={preview.url}
-              className="w-full h-[600px] border border-brand-hair rounded"
-              title="Document preview"
-            />
-          )}
-
-          {!previewLoading && !previewError && preview?.kind === "csv" && (
-            <div className="space-y-2">
-              <div className="border border-brand-hair rounded overflow-auto max-h-[600px]">
-                <table className="w-full text-xs border-collapse">
-                  <tbody>
-                    {preview.rows.map((row, ri) => (
-                      <tr
-                        key={ri}
-                        className={ri === 0 ? "bg-brand-b5" : ri % 2 ? "bg-brand-codebg" : ""}
-                      >
-                        {row.map((cell, ci) => {
-                          const Cell = ri === 0 ? "th" : "td";
-                          return (
-                            <Cell
-                              key={ci}
-                              className={`border border-brand-hair px-3 py-1.5 text-left whitespace-nowrap ${
-                                ri === 0
-                                  ? "font-bold text-brand-blue"
-                                  : "text-brand-ink tabular-numbers font-mono"
-                              }`}
-                            >
-                              {cell}
-                            </Cell>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {preview.truncated && (
-                <p className="text-[11px] text-brand-muted">
-                  Preview truncated to the first {MAX_PREVIEW_ROWS} rows. Download
-                  the file for the complete data.
-                </p>
-              )}
-            </div>
-          )}
-
-          {!previewLoading &&
-            !previewError &&
-            preview?.kind === "unsupported" && (
-              <p className="text-sm text-brand-muted bg-brand-codebg border border-brand-hair rounded p-4">
-                Inline preview isn't available for this file type — use Download.
-              </p>
-            )}
-        </div>
+              <Download className="w-3.5 h-3.5" aria-hidden={true} />
+              Download
+            </a>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -669,8 +489,8 @@ function UnlockedState() {
             Your exercise data is now unlocked. Good luck!
           </p>
           <p className="text-xs text-emerald-700 mt-1">
-            Preview or download your materials below, and reveal your API key
-            when you're ready to start.
+            Download your materials below, and reveal your API key when you're
+            ready to start.
           </p>
         </div>
       </div>
