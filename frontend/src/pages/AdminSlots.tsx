@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Calendar, Edit2, Plus, Trash2, X, Check } from "lucide-react";
 import { api } from "../api/client";
+import { berlinLocalToISO, formatCEST, isoToBerlinLocal } from "../lib/time";
 
 type Booking = { candidate_id: string; first_name: string };
 
@@ -13,8 +14,9 @@ type Slot = {
   bookings: Booking[];
 };
 
+// Slots run on-site (CEST) — display every stored instant in Berlin time.
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return formatCEST(iso);
 }
 
 export default function AdminSlots() {
@@ -66,7 +68,7 @@ export default function AdminSlots() {
     setCreateError("");
     try {
       await api.post("/api/admin/slots", {
-        starts_at: new Date(startsAt).toISOString(),
+        starts_at: berlinLocalToISO(startsAt),
         capacity: capacity || 1,
       });
       setStartsAt("");
@@ -88,13 +90,10 @@ export default function AdminSlots() {
   }
 
   function startEdit(slot: Slot) {
-    // Convert ISO to datetime-local format (strip seconds/ms, keep local)
-    const local = new Date(slot.starts_at);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const localStr = `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}T${pad(local.getHours())}:${pad(local.getMinutes())}`;
+    // Edit in CEST (Berlin) wall-clock, independent of the admin's own timezone.
     setEditState((prev) => ({
       ...prev,
-      [slot.id]: { starts_at: localStr, capacity: slot.capacity },
+      [slot.id]: { starts_at: isoToBerlinLocal(slot.starts_at), capacity: slot.capacity },
     }));
   }
 
@@ -112,7 +111,7 @@ export default function AdminSlots() {
     clearSlotError(slot.id);
     try {
       await api.patch(`/api/admin/slots/${slot.id}`, {
-        starts_at: new Date(es.starts_at).toISOString(),
+        starts_at: berlinLocalToISO(es.starts_at),
         capacity: Number(es.capacity) || 1,
       });
       cancelEdit(slot.id);
@@ -176,7 +175,7 @@ export default function AdminSlots() {
               htmlFor="slot-starts-at"
               className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted mb-1.5"
             >
-              Date / Time of Slot
+              Date / Time of Slot (CEST)
             </label>
             <input
               id="slot-starts-at"
