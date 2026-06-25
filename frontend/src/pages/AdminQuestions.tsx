@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { Check, MessageSquare } from "lucide-react";
 
 type Question = {
   id: number;
@@ -39,19 +39,36 @@ function AnswerForm({ q, onSaved }: { q: Question; onSaved: () => void }) {
     }
   }
 
+  const labelId = `answer-label-${q.id}`;
+
   return (
-    <form onSubmit={save} style={{ marginTop: 6 }}>
+    <form onSubmit={save} className="space-y-2">
+      <label
+        id={labelId}
+        className="block text-[10px] uppercase font-bold tracking-wider text-brand-muted"
+      >
+        Answer Text
+      </label>
       <textarea
+        aria-labelledby={labelId}
+        rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={3}
-        style={{ width: "100%", boxSizing: "border-box" }}
-        placeholder="Type your answer…"
+        placeholder="Type response for the candidate…"
+        className="w-full text-xs border border-brand-hair rounded p-2.5 bg-white text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-blue resize-y"
       />
-      <button type="submit" disabled={saving || !text.trim()} style={{ marginTop: 4 }}>
-        {saving ? "Saving…" : "Save"}
-      </button>
-      {error && <span style={{ color: "red", marginLeft: 8, fontSize: 13 }}>{error}</span>}
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={saving || !text.trim()}
+          className="px-4 py-2 bg-brand-blue text-white text-xs font-semibold rounded hover:bg-opacity-90 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saving ? "Saving…" : "Submit Answer"}
+        </button>
+        {error && (
+          <span className="text-xs text-brand-red">{error}</span>
+        )}
+      </div>
     </form>
   );
 }
@@ -74,94 +91,138 @@ export default function AdminQuestions() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const unanswered = questions.filter((q) => !q.answered);
   const answered = questions.filter((q) => q.answered);
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
-      <p><Link to="/admin">← Back to admin</Link></p>
-      <h1>Questions Queue</h1>
-      {loading && <p>Loading…</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-8">
+      {/* Page heading */}
+      <div className="flex items-center gap-3 pb-4 border-b border-brand-hair">
+        <MessageSquare className="w-5 h-5 text-brand-blue flex-shrink-0" />
+        <h1 className="text-xl font-bold text-brand-blue">Questions Queue</h1>
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <p className="text-sm text-brand-muted">Loading…</p>
+      )}
+
+      {/* Error */}
+      {!loading && error && (
+        <p className="text-sm text-brand-red bg-brand-redbg border border-brand-red rounded px-3 py-2">
+          {error}
+        </p>
+      )}
 
       {!loading && !error && (
         <>
-          <h2>
-            Unanswered{" "}
-            {unanswered.length > 0 && (
-              <span
-                style={{
-                  background: "#e53e3e",
-                  color: "#fff",
-                  borderRadius: 12,
-                  padding: "2px 9px",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  verticalAlign: "middle",
-                }}
-              >
-                {unanswered.length}
-              </span>
-            )}
-          </h2>
-          {unanswered.length === 0 && <p style={{ color: "#555" }}>No unanswered questions.</p>}
-          {unanswered.map((q) => (
-            <div
-              key={q.id}
-              style={{
-                border: "2px solid #e53e3e",
-                borderRadius: 6,
-                padding: 12,
-                marginBottom: 12,
-                background: "#fff5f5",
-              }}
-            >
-              <div style={{ marginBottom: 4 }}>
-                <strong>{q.first_name}</strong>{" "}
-                <span style={{ color: "#555", fontSize: 13 }}>({q.candidate_id})</span>{" "}
-                <span style={{ fontSize: 12, color: "#888" }}>asked {fmt(q.asked_at)}</span>
-              </div>
-              <p style={{ margin: "4px 0 8px" }}>{q.body}</p>
-              <AnswerForm q={q} onSaved={load} />
-            </div>
-          ))}
+          {/* ── Unanswered Queue ── */}
+          <div className="space-y-4">
+            <h2 className="font-bold text-brand-blue text-sm flex items-center gap-2 uppercase tracking-wider">
+              <span>Unanswered Queue</span>
+              {unanswered.length > 0 && (
+                <span className="bg-brand-red text-white text-[10px] px-2 py-0.5 rounded-full font-bold tabular-numbers">
+                  {unanswered.length}
+                </span>
+              )}
+            </h2>
 
-          <h2>Answered</h2>
-          {answered.length === 0 && <p style={{ color: "#555" }}>No answered questions yet.</p>}
-          {answered.map((q) => (
-            <div
-              key={q.id}
-              style={{
-                border: "1px solid #ccc",
-                borderRadius: 6,
-                padding: 12,
-                marginBottom: 12,
-                background: "#f9f9f9",
-              }}
-            >
-              <div style={{ marginBottom: 4 }}>
-                <strong>{q.first_name}</strong>{" "}
-                <span style={{ color: "#555", fontSize: 13 }}>({q.candidate_id})</span>{" "}
-                <span style={{ fontSize: 12, color: "#888" }}>asked {fmt(q.asked_at)}</span>
+            {unanswered.length === 0 ? (
+              <div className="p-8 text-center text-brand-muted border border-dashed border-brand-hair rounded bg-neutral-50">
+                <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-xs">All candidate questions answered. Excellent triage state.</p>
               </div>
-              <p style={{ margin: "4px 0 8px" }}>{q.body}</p>
-              <div
-                style={{
-                  background: "#e8f5e9",
-                  border: "1px solid #a5d6a7",
-                  borderRadius: 4,
-                  padding: "8px 10px",
-                  fontSize: 14,
-                }}
-              >
-                <strong>Answer</strong>{" "}
-                <span style={{ fontSize: 12, color: "#555" }}>(answered {fmt(q.answered_at)})</span>
-                <p style={{ margin: "4px 0 0" }}>{q.answer}</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {unanswered.map((q) => (
+                  <div
+                    key={q.id}
+                    className="border border-brand-red rounded-lg p-5 bg-white space-y-4 shadow-xs"
+                  >
+                    {/* Card header */}
+                    <div className="flex flex-wrap justify-between items-start gap-3 border-b border-brand-hair pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-brand-blue text-xs">
+                          {q.first_name}
+                        </span>
+                        <code className="text-[10px] text-brand-muted font-mono bg-brand-b5 px-1.5 py-0.5 rounded">
+                          {q.candidate_id}
+                        </code>
+                      </div>
+                      <span className="text-[10px] text-brand-muted font-mono tabular-numbers">
+                        Asked: {fmt(q.asked_at)}
+                      </span>
+                    </div>
+
+                    {/* Question body */}
+                    <p className="text-xs font-semibold text-brand-ink leading-relaxed pl-2 border-l-2 border-brand-red bg-neutral-50 py-2 rounded-r">
+                      {q.body}
+                    </p>
+
+                    {/* Inline answer form */}
+                    <AnswerForm q={q} onSaved={load} />
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
+            )}
+          </div>
+
+          {/* ── Answered Archive ── */}
+          <div className="space-y-4">
+            <h2 className="font-bold text-brand-blue text-sm uppercase tracking-wider">
+              Answered Archive
+            </h2>
+
+            {answered.length === 0 ? (
+              <div className="p-8 text-center text-brand-muted border border-dashed border-brand-hair rounded">
+                <p className="text-xs">No questions have been answered yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {answered.map((q) => (
+                  <div
+                    key={q.id}
+                    className="border border-brand-hair rounded-lg p-4 bg-neutral-50 space-y-2"
+                  >
+                    {/* Card header */}
+                    <div className="flex flex-wrap justify-between items-start gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-brand-ink text-xs">
+                          {q.first_name}
+                        </span>
+                        <code className="text-[10px] text-brand-muted font-mono">
+                          ({q.candidate_id})
+                        </code>
+                      </div>
+                      <span className="text-[10px] text-brand-muted tabular-numbers">
+                        Asked: {fmt(q.asked_at)}
+                      </span>
+                    </div>
+
+                    {/* Question body (muted, italic) */}
+                    <p className="text-xs text-brand-muted pl-2 border-l border-brand-muted italic">
+                      "{q.body}"
+                    </p>
+
+                    {/* Answer block */}
+                    <div className="bg-white border border-brand-hair p-3 rounded text-xs mt-2">
+                      <p className="font-bold text-brand-blue mb-1">
+                        Assessor Answer{" "}
+                        <span className="font-normal text-brand-muted tabular-numbers">
+                          (answered {fmt(q.answered_at)})
+                        </span>
+                      </p>
+                      <p className="text-brand-ink leading-relaxed">{q.answer}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
