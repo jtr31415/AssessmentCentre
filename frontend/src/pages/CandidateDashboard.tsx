@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import {
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  Copy,
+  Database,
+  Download,
+  Eye,
+  EyeOff,
+  FileText,
+  HelpCircle,
+  Key,
+  Lock,
+  ShieldCheck,
+} from "lucide-react";
 import { api } from "../api/client";
 import Countdown from "../components/Countdown";
 
@@ -29,12 +44,299 @@ interface ApiKeyInfo {
 
 const CATEGORY_ORDER: string[] = ["brief", "data", "reference"];
 const CATEGORY_LABELS: Record<string, string> = {
-  brief: "Brief",
+  brief: "Exercise Brief",
   data: "Data Files",
   reference: "Reference Material",
 };
+const CATEGORY_ICONS: Record<
+  string,
+  React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>
+> = {
+  brief: BookOpen,
+  data: Database,
+  reference: FileText,
+};
 
-function DownloadArea() {
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tabbed content panel (driven by the REAL /api/content files)
+// ---------------------------------------------------------------------------
+
+const MAX_PREVIEW_ROWS = 200;
+
+interface CsvPreview {
+  kind: "csv";
+  rows: string[][];
+  truncated: boolean;
+}
+interface PdfPreview {
+  kind: "pdf";
+  url: string;
+}
+interface UnsupportedPreview {
+  kind: "unsupported";
+}
+type Preview = CsvPreview | PdfPreview | UnsupportedPreview;
+
+function parseCsv(text: string): { rows: string[][]; truncated: boolean } {
+  const lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
+  const truncated = lines.length > MAX_PREVIEW_ROWS;
+  const slice = truncated ? lines.slice(0, MAX_PREVIEW_ROWS) : lines;
+  return {
+    rows: slice.map((line) => line.split(",")),
+    truncated,
+  };
+}
+
+function ContentTabs({ items }: { items: ContentItem[] }) {
+  const grouped: Record<string, ContentItem[]> = {};
+  for (const item of items) {
+    if (!grouped[item.category]) grouped[item.category] = [];
+    grouped[item.category].push(item);
+  }
+  const categories = [
+    ...CATEGORY_ORDER.filter((c) => grouped[c]?.length),
+    ...Object.keys(grouped).filter(
+      (c) => !CATEGORY_ORDER.includes(c) && grouped[c]?.length
+    ),
+  ];
+
+  const [activeTab, setActiveTab] = useState<string>(categories[0] ?? "");
+  const [selectedKey, setSelectedKey] = useState<string>(
+    grouped[categories[0]]?.[0]?.file_key ?? ""
+  );
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const objectUrlRef = useRef<string | null>(null);
+
+  const revokeUrl = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+  }, []);
+
+  // Fetch + build the preview whenever the selected file changes.
+  useEffect(() => {
+    if (!selectedKey) return;
+    let cancelled = false;
+    setPreview(null);
+    setPreviewError("");
+    setPreviewLoading(true);
+
+    (async () => {
+      try {
+        const res = await fetch("/api/content/" + selectedKey, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          throw new Error(`Could not load preview (${res.status})`);
+        }
+        const blob = await res.blob();
+        if (cancelled) return;
+
+        const type = blob.type.toLowerCase();
+        if (type.includes("pdf")) {
+          revokeUrl();
+          const url = URL.createObjectURL(blob);
+          objectUrlRef.current = url;
+          setPreview({ kind: "pdf", url });
+        } else if (type.includes("csv") || type.startsWith("text/")) {
+          const text = await blob.text();
+          if (cancelled) return;
+          const { rows, truncated } = parseCsv(text);
+          setPreview({ kind: "csv", rows, truncated });
+        } else {
+          setPreview({ kind: "unsupported" });
+        }
+      } catch (e) {
+        if (!cancelled) setPreviewError((e as Error).message);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKey, revokeUrl]);
+
+  // Revoke any outstanding object URL on unmount.
+  useEffect(() => revokeUrl, [revokeUrl]);
+
+  function selectTab(cat: string) {
+    setActiveTab(cat);
+    setSelectedKey(grouped[cat]?.[0]?.file_key ?? "");
+  }
+
+  const activeFiles = grouped[activeTab] ?? [];
+
+  return (
+    <div className="border border-brand-hair rounded-lg bg-white overflow-hidden">
+      {/* Tab bar */}
+      <div
+        className="flex border-b border-brand-hair px-2"
+        role="tablist"
+        aria-label="Assessment materials"
+      >
+        {categories.map((cat) => {
+          const Icon = CATEGORY_ICONS[cat] ?? FileText;
+          const isActive = cat === activeTab;
+          return (
+            <button
+              key={cat}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => selectTab(cat)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors cursor-pointer ${
+                isActive
+                  ? "text-brand-blue border-brand-blue"
+                  : "text-brand-muted border-transparent hover:text-brand-ink"
+              }`}
+            >
+              <Icon className="w-4 h-4" aria-hidden={true} />
+              {CATEGORY_LABELS[cat] ?? cat}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* File list for the active tab */}
+      <div className="p-5 space-y-3">
+        {activeFiles.map((file) => {
+          const isSelected = file.file_key === selectedKey;
+          return (
+            <div
+              key={file.file_key}
+              className={`flex items-center justify-between gap-4 border rounded-lg p-4 transition-colors ${
+                isSelected
+                  ? "bg-brand-b5 border-brand-b4"
+                  : "bg-white border-brand-hair"
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText
+                  className="w-4 h-4 text-brand-muted flex-shrink-0"
+                  aria-hidden={true}
+                />
+                <span className="text-sm font-medium text-brand-ink truncate">
+                  {file.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setSelectedKey(file.file_key)}
+                  aria-pressed={isSelected}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded transition-colors cursor-pointer ${
+                    isSelected
+                      ? "bg-brand-blue text-white"
+                      : "text-brand-blue hover:bg-brand-b5"
+                  }`}
+                >
+                  {isSelected ? "Previewing" : "Preview"}
+                </button>
+                <a
+                  href={"/api/content/" + file.file_key}
+                  download
+                  className="flex items-center gap-1.5 text-xs font-semibold text-brand-blue border border-brand-hair rounded px-3 py-1.5 hover:bg-brand-b5 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" aria-hidden={true} />
+                  Download
+                </a>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Inline preview area */}
+        <div className="pt-2">
+          {previewLoading && (
+            <p className="text-sm text-brand-muted py-6 text-center">
+              Loading preview…
+            </p>
+          )}
+
+          {previewError && !previewLoading && (
+            <p
+              className="text-sm text-brand-red bg-brand-redbg border border-brand-red rounded p-3"
+              role="alert"
+            >
+              {previewError}
+            </p>
+          )}
+
+          {!previewLoading && !previewError && preview?.kind === "pdf" && (
+            <iframe
+              src={preview.url}
+              className="w-full h-[600px] border border-brand-hair rounded"
+              title="Document preview"
+            />
+          )}
+
+          {!previewLoading && !previewError && preview?.kind === "csv" && (
+            <div className="space-y-2">
+              <div className="border border-brand-hair rounded overflow-auto max-h-[600px]">
+                <table className="w-full text-xs border-collapse">
+                  <tbody>
+                    {preview.rows.map((row, ri) => (
+                      <tr
+                        key={ri}
+                        className={ri === 0 ? "bg-brand-b5" : ri % 2 ? "bg-brand-codebg" : ""}
+                      >
+                        {row.map((cell, ci) => {
+                          const Cell = ri === 0 ? "th" : "td";
+                          return (
+                            <Cell
+                              key={ci}
+                              className={`border border-brand-hair px-3 py-1.5 text-left whitespace-nowrap ${
+                                ri === 0
+                                  ? "font-bold text-brand-blue"
+                                  : "text-brand-ink tabular-numbers font-mono"
+                              }`}
+                            >
+                              {cell}
+                            </Cell>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {preview.truncated && (
+                <p className="text-[11px] text-brand-muted">
+                  Preview truncated to the first {MAX_PREVIEW_ROWS} rows. Download
+                  the file for the complete data.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!previewLoading &&
+            !previewError &&
+            preview?.kind === "unsupported" && (
+              <p className="text-sm text-brand-muted bg-brand-codebg border border-brand-hair rounded p-4">
+                Inline preview isn't available for this file type — use Download.
+              </p>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnlockedContent() {
   const [items, setItems] = useState<ContentItem[] | null>(null);
   const [error, setError] = useState("");
 
@@ -45,47 +347,43 @@ function DownloadArea() {
       .catch((e) => setError((e as Error).message));
   }, []);
 
-  if (error) return <p style={{ color: "red" }}>Could not load files: {error}</p>;
-  if (items === null) return <p>Loading files…</p>;
-  if (items.length === 0) return <p>No files available yet.</p>;
-
-  const grouped: Record<string, ContentItem[]> = {};
-  for (const item of items) {
-    if (!grouped[item.category]) grouped[item.category] = [];
-    grouped[item.category].push(item);
+  if (error) {
+    return (
+      <div className="border border-brand-hair rounded-lg bg-white p-6">
+        <p
+          className="text-sm text-brand-red bg-brand-redbg border border-brand-red rounded p-3"
+          role="alert"
+        >
+          Could not load files: {error}
+        </p>
+      </div>
+    );
   }
 
-  const categories = [
-    ...CATEGORY_ORDER.filter((c) => grouped[c]),
-    ...Object.keys(grouped).filter((c) => !CATEGORY_ORDER.includes(c)),
-  ];
+  if (items === null) {
+    return (
+      <div className="border border-brand-hair rounded-lg bg-white p-6">
+        <p className="text-sm text-brand-muted">Loading files…</p>
+      </div>
+    );
+  }
 
-  return (
-    <div>
-      <h2>Assessment Files</h2>
-      {categories.map((cat) => (
-        <div key={cat} style={{ marginBottom: 16 }}>
-          <h3 style={{ marginBottom: 8 }}>{CATEGORY_LABELS[cat] ?? cat}</h3>
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {grouped[cat].map((item) => (
-              <li key={item.file_key} style={{ marginBottom: 6 }}>
-                <a
-                  href={"/api/content/" + item.file_key}
-                  download
-                  style={{ textDecoration: "underline", cursor: "pointer" }}
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  );
+  if (items.length === 0) {
+    return (
+      <div className="border border-brand-hair rounded-lg bg-white p-6">
+        <p className="text-sm text-brand-muted">No files available yet.</p>
+      </div>
+    );
+  }
+
+  return <ContentTabs items={items} />;
 }
 
-function ApiKeySection() {
+// ---------------------------------------------------------------------------
+// API-key card
+// ---------------------------------------------------------------------------
+
+function ApiKeyCard() {
   const [keyInfo, setKeyInfo] = useState<ApiKeyInfo | null>(null);
   const [noKey, setNoKey] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,9 +392,12 @@ function ApiKeySection() {
   const [copied, setCopied] = useState(false);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (copyTimeout.current) clearTimeout(copyTimeout.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (copyTimeout.current) clearTimeout(copyTimeout.current);
+    },
+    []
+  );
 
   async function revealKey() {
     setLoading(true);
@@ -127,42 +428,269 @@ function ApiKeySection() {
   }
 
   return (
-    <div style={{ marginTop: 24 }}>
-      <h2>Your API Key</h2>
-      {!keyInfo && !noKey && (
-        <button onClick={revealKey} disabled={loading}>
-          {loading ? "Loading…" : "Reveal API key"}
-        </button>
-      )}
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {noKey && (
-        <div>
-          <p style={{ color: "#888" }}>Your assessor hasn't added your API key yet.</p>
-          <button onClick={revealKey} disabled={loading} style={{ marginTop: 4 }}>
-            Try again
+    <div className="border border-brand-hair rounded-lg bg-white p-6 space-y-4">
+      <div className="panel-title">
+        <h4 className="font-bold text-brand-blue text-sm flex items-center gap-2">
+          <Key className="w-4 h-4" aria-hidden={true} />
+          Your API Key
+        </h4>
+      </div>
+
+      <div className="ml-4 space-y-3">
+        {!keyInfo && !noKey && !error && (
+          <button
+            onClick={revealKey}
+            disabled={loading}
+            aria-busy={loading}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-brand-blue rounded px-4 py-2 hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Eye className="w-4 h-4" aria-hidden={true} />
+            {loading ? "Loading…" : "Reveal API key"}
           </button>
-        </div>
-      )}
-      {keyInfo && (
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <input
-              readOnly
-              type={visible ? "text" : "password"}
-              value={keyInfo.api_key}
-              style={{ fontFamily: "monospace", minWidth: 280 }}
-            />
-            <button onClick={() => setVisible((v) => !v)}>{visible ? "Hide" : "Show"}</button>
-            <button onClick={copyKey}>{copied ? "Copied!" : "Copy"}</button>
+        )}
+
+        {error && (
+          <div className="space-y-2">
+            <p
+              className="text-sm text-brand-red bg-brand-redbg border border-brand-red rounded p-3"
+              role="alert"
+            >
+              {error}
+            </p>
+            <button
+              onClick={revealKey}
+              disabled={loading}
+              className="text-sm font-semibold text-brand-blue underline hover:text-brand-red cursor-pointer"
+            >
+              Try again
+            </button>
           </div>
-          {keyInfo.note && (
-            <p style={{ color: "#444", fontSize: 14, whiteSpace: "pre-wrap" }}>{keyInfo.note}</p>
-          )}
-        </div>
-      )}
+        )}
+
+        {noKey && (
+          <div className="space-y-2">
+            <p className="text-sm text-brand-muted">
+              Your assessor hasn't added your API key yet.
+            </p>
+            <button
+              onClick={revealKey}
+              disabled={loading}
+              className="text-sm font-semibold text-brand-blue underline hover:text-brand-red cursor-pointer"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {keyInfo && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                aria-label="API key"
+                type={visible ? "text" : "password"}
+                value={keyInfo.api_key}
+                className="flex-1 font-mono text-sm bg-brand-codebg border border-brand-hair rounded px-3 py-2 text-brand-ink min-w-0"
+              />
+              <button
+                onClick={() => setVisible((v) => !v)}
+                aria-label={visible ? "Hide API key" : "Show API key"}
+                className="flex items-center gap-1.5 text-xs font-semibold text-brand-blue border border-brand-hair rounded px-3 py-2 hover:bg-brand-b5 transition-colors cursor-pointer"
+              >
+                {visible ? (
+                  <EyeOff className="w-3.5 h-3.5" aria-hidden={true} />
+                ) : (
+                  <Eye className="w-3.5 h-3.5" aria-hidden={true} />
+                )}
+                {visible ? "Hide" : "Show"}
+              </button>
+              <button
+                onClick={copyKey}
+                className="flex items-center gap-1.5 text-xs font-semibold text-brand-blue border border-brand-hair rounded px-3 py-2 hover:bg-brand-b5 transition-colors cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" aria-hidden={true} />
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            {keyInfo.note && (
+              <p className="text-xs text-brand-muted whitespace-pre-wrap leading-relaxed">
+                {keyInfo.note}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Right sidebar
+// ---------------------------------------------------------------------------
+
+function Sidebar() {
+  return (
+    <div className="space-y-6">
+      <div className="border border-brand-hair rounded-lg bg-white p-5 space-y-3">
+        <div className="panel-title">
+          <h4 className="font-bold text-brand-blue text-sm flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" aria-hidden={true} />
+            Data Minimisation
+          </h4>
+        </div>
+        <p className="text-xs text-brand-muted leading-relaxed ml-4">
+          We only collect what we need to run your assessment, and your exercise
+          materials are released to you alone. Read how we handle your data.
+        </p>
+        <a
+          href="/privacy"
+          className="ml-4 inline-block text-xs font-semibold text-brand-blue underline hover:text-brand-red"
+        >
+          Privacy &amp; data handling
+        </a>
+      </div>
+
+      <div className="border border-brand-hair rounded-lg bg-brand-redbg p-5 space-y-3">
+        <div className="panel-title">
+          <h4 className="font-bold text-brand-red text-sm flex items-center gap-2">
+            <HelpCircle className="w-4 h-4" aria-hidden={true} />
+            Need Clarification?
+          </h4>
+        </div>
+        <p className="text-xs text-brand-ink leading-relaxed ml-4">
+          If anything in the brief or data is unclear, send a question to your
+          assessor before your session.
+        </p>
+        <a
+          href="/questions"
+          className="ml-4 inline-block text-xs font-semibold text-white bg-brand-red rounded px-3 py-2 hover:opacity-90 transition-opacity"
+        >
+          Ask a question
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// State cards
+// ---------------------------------------------------------------------------
+
+function NoBookingCard({ onBook }: { onBook: () => void }) {
+  return (
+    <div className="border border-brand-red rounded-lg bg-brand-redbg p-6 space-y-4 max-w-2xl">
+      <div className="panel-title">
+        <h3 className="font-bold text-brand-red text-base flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5" aria-hidden={true} />
+          You haven't booked your assessment yet
+        </h3>
+      </div>
+      <p className="text-sm text-brand-ink leading-relaxed ml-4">
+        To receive your exercise materials and API key, you first need to choose
+        an assessment slot. Your exercise data unlocks ahead of your session so
+        you have time to prepare.
+      </p>
+      <div className="ml-4">
+        <button
+          onClick={onBook}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-brand-red rounded px-5 py-2.5 hover:opacity-90 transition-opacity cursor-pointer"
+        >
+          Book your assessment
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LockedCard({
+  booking,
+  onUnlock,
+}: {
+  booking: HasBooking;
+  onUnlock: () => void;
+}) {
+  const unlockLabel = formatDateTime(booking.unlock_at);
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+      <div className="md:col-span-8 space-y-6">
+        <div className="border border-brand-hair rounded-lg bg-white p-6 space-y-3">
+          <div className="panel-title">
+            <h3 className="font-bold text-brand-blue text-sm">
+              Your Scheduled Assessment
+            </h3>
+          </div>
+          <p className="text-sm text-brand-ink ml-4">
+            Your assessment is scheduled for{" "}
+            <strong className="font-semibold tabular-numbers">
+              {formatDateTime(booking.slot_starts_at)}
+            </strong>
+            .
+          </p>
+        </div>
+
+        <div className="border border-brand-hair rounded-lg bg-white p-6 space-y-4">
+          <div className="panel-title">
+            <h3 className="font-bold text-brand-blue text-sm flex items-center gap-2">
+              <Lock className="w-4 h-4" aria-hidden={true} />
+              Exercise Materials Locked
+            </h3>
+          </div>
+          <p className="text-sm text-brand-muted ml-4">
+            Your exercise data and API key unlock on{" "}
+            <strong className="text-brand-ink font-semibold tabular-numbers">
+              {unlockLabel}
+            </strong>
+            . The page will refresh automatically when the timer reaches zero.
+          </p>
+          <div className="ml-4">
+            <Countdown unlockAt={booking.unlock_at} onUnlock={onUnlock} />
+          </div>
+        </div>
+      </div>
+
+      <div className="md:col-span-4">
+        <Sidebar />
+      </div>
+    </div>
+  );
+}
+
+function UnlockedState() {
+  return (
+    <div className="space-y-6">
+      {/* Celebratory banner */}
+      <div className="border border-emerald-300 bg-emerald-50 rounded-lg p-5 flex items-start gap-3">
+        <CheckCircle2
+          className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5"
+          aria-hidden={true}
+        />
+        <div>
+          <p className="font-bold text-emerald-800 text-sm">
+            Your exercise data is now unlocked. Good luck!
+          </p>
+          <p className="text-xs text-emerald-700 mt-1">
+            Preview or download your materials below, and reveal your API key
+            when you're ready to start.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="md:col-span-8 space-y-6">
+          <UnlockedContent />
+          <ApiKeyCard />
+        </div>
+        <div className="md:col-span-4">
+          <Sidebar />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function CandidateDashboard() {
   const nav = useNavigate();
@@ -183,56 +711,34 @@ export default function CandidateDashboard() {
     fetchBooking();
   }, [fetchBooking]);
 
-  async function logout() {
-    try {
-      await api.post("/api/auth/logout");
-    } finally {
-      nav("/login");
-    }
-  }
-
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Welcome</h1>
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
-
-      {bookingState === null && !error && <p>Loading...</p>}
-
-      {bookingState !== null && !bookingState.has_booking && (
-        <p>
-          <Link to="/book">Book your assessment</Link>
+    <div className="space-y-6 animate-fade-in">
+      {error && (
+        <p
+          className="text-sm text-brand-red bg-brand-redbg border border-brand-red rounded p-3"
+          role="alert"
+        >
+          {error}
         </p>
       )}
 
-      {bookingState !== null && bookingState.has_booking && !bookingState.unlocked && (
-        <div>
-          <p>
-            Your assessment is scheduled for{" "}
-            <strong>{new Date(bookingState.slot_starts_at).toLocaleString()}</strong>.
-          </p>
-          <p>
-            Your exercise data unlocks in:{" "}
-            <Countdown unlockAt={bookingState.unlock_at} onUnlock={fetchBooking} />
-          </p>
-        </div>
+      {bookingState === null && !error && (
+        <p className="text-sm text-brand-muted">Loading…</p>
       )}
 
-      {bookingState !== null && bookingState.has_booking && bookingState.unlocked && (
-        <div>
-          <p>Your exercise data is now unlocked. Good luck!</p>
-          <DownloadArea />
-          <ApiKeySection />
-        </div>
+      {bookingState !== null && !bookingState.has_booking && (
+        <NoBookingCard onBook={() => nav("/book")} />
       )}
 
-      <div style={{ marginTop: 24 }}>
-        <Link to="/questions">Ask the assessor a question</Link>
-      </div>
+      {bookingState !== null &&
+        bookingState.has_booking &&
+        !bookingState.unlocked && (
+          <LockedCard booking={bookingState} onUnlock={fetchBooking} />
+        )}
 
-      <button onClick={logout} style={{ marginTop: 16 }}>
-        Log out
-      </button>
+      {bookingState !== null &&
+        bookingState.has_booking &&
+        bookingState.unlocked && <UnlockedState />}
     </div>
   );
 }
