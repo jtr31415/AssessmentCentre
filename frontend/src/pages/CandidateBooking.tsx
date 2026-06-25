@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { api } from "../api/client";
 import AssessmentDetails from "../components/AssessmentDetails";
+import { formatCEST } from "../lib/time";
 
 interface OpenSlot {
   id: number;
@@ -144,6 +145,9 @@ export default function CandidateBooking() {
                 Available Assessment Slots
               </h4>
             </div>
+            <p className="text-[11px] text-brand-muted ml-4 -mt-2">
+              All times are shown in <strong>CEST</strong> (Central European Summer Time).
+            </p>
 
             {loadError && (
               <p className="text-sm text-brand-red ml-4">{loadError}</p>
@@ -180,14 +184,7 @@ export default function CandidateBooking() {
                     >
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-brand-ink tabular-numbers">
-                          {new Date(slot.starts_at).toLocaleString("en-GB", {
-                            weekday: "short",
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatCEST(slot.starts_at)}
                         </p>
                       </div>
 

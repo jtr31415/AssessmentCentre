@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         SessionMiddleware,
         secret_key=get_settings().session_secret,
-        https_only=False,
+        https_only=get_settings().session_https_only,
         same_site="lax",
     )
     app.include_router(public.router)

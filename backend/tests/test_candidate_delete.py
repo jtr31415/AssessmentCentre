@@ -32,20 +32,20 @@ def test_delete_candidate_cascades(client, db_session):
     # Wrong confirmation → 400, candidate untouched
     r = client.request("DELETE", f"/api/admin/candidates/{cid}", json={"confirm": "nope"})
     assert r.status_code == 400
-    assert (
-        db_session.execute(select(Candidate).where(Candidate.candidate_id == cid)).scalar_one_or_none()
-        is not None
-    )
+    still = db_session.execute(
+        select(Candidate).where(Candidate.candidate_id == cid)
+    ).scalar_one_or_none()
+    assert still is not None
 
     # Correct confirmation → deletes candidate + all their data
     r = client.request("DELETE", f"/api/admin/candidates/{cid}", json={"confirm": cid})
     assert r.status_code == 200, r.text
 
     db_session.expire_all()
-    assert (
-        db_session.execute(select(Candidate).where(Candidate.candidate_id == cid)).scalar_one_or_none()
-        is None
-    )
+    gone = db_session.execute(
+        select(Candidate).where(Candidate.candidate_id == cid)
+    ).scalar_one_or_none()
+    assert gone is None
     assert db_session.execute(
         select(Booking).where(Booking.candidate_id == cand.id)
     ).scalar_one_or_none() is None

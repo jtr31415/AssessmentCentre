@@ -41,3 +41,12 @@ def client(db_session):
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db_session
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_guard():
+    """Clear the in-memory login rate-limiter between tests (failures don't leak)."""
+    from app.rate_limit import login_guard
+
+    login_guard.reset_all()
+    yield

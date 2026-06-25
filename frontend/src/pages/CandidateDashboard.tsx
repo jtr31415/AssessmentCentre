@@ -19,6 +19,7 @@ import {
 import { api } from "../api/client";
 import Countdown from "../components/Countdown";
 import AssessmentDetails from "../components/AssessmentDetails";
+import { formatCEST } from "../lib/time";
 
 interface NoBooking {
   has_booking: false;
@@ -60,16 +61,8 @@ const CATEGORY_ICONS: Record<
   reference: FileText,
 };
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+// Candidate-facing times are pinned to CEST (assessments run on-site).
+const formatDateTime = formatCEST;
 
 // ---------------------------------------------------------------------------
 // Content panel — category tabs, each file shows its description + download.

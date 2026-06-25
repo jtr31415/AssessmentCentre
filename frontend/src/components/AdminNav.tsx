@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
@@ -25,15 +25,36 @@ export default function AdminNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [pendingQuestions, setPendingQuestions] = useState(0);
+  const prevPending = useRef<number | null>(null);
 
-  // Poll for unanswered candidate questions (in-app notification badge).
+  // Ask once for browser-notification permission (falls back to the badge).
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  // Poll for unanswered candidate questions (in-app badge + browser notification).
   useEffect(() => {
     let active = true;
     const poll = () =>
       api
         .get("/api/admin/notifications")
         .then((d: { unanswered_questions: number }) => {
-          if (active) setPendingQuestions(d.unanswered_questions);
+          if (!active) return;
+          const n = d.unanswered_questions;
+          if (
+            prevPending.current !== null &&
+            n > prevPending.current &&
+            typeof Notification !== "undefined" &&
+            Notification.permission === "granted"
+          ) {
+            new Notification("New candidate question", {
+              body: "A candidate has submitted a question — open the Questions tab.",
+            });
+          }
+          prevPending.current = n;
+          setPendingQuestions(n);
         })
         .catch(() => {});
     poll();

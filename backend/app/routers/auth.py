@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.audit import record
 from app.db import get_db
 from app.models import Admin, Candidate
+from app.rate_limit import client_ip, login_guard
 from app.schemas import AdminLogin, CandidateLogin, SetPassword
 from app.security import hash_password, verify_password
 
@@ -15,9 +16,13 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/admin/login")
 def admin_login(body: AdminLogin, request: Request, db: Session = Depends(get_db)):  # noqa: B008
+    ip = client_ip(request)
+    login_guard.check(ip)
     admin = db.execute(select(Admin).filter_by(username=body.username)).scalar_one_or_none()
     if not admin or not verify_password(body.password, admin.password_hash):
+        login_guard.fail(ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+    login_guard.reset(ip)
     request.session.update({"role": "admin", "admin_id": admin.id})
     record(db, actor="admin", action="login", detail=f"admin '{admin.username}' logged in")
     return {"role": "admin", "id": admin.id}
@@ -60,6 +65,8 @@ def candidate_set_password(body: SetPassword, db: Session = Depends(get_db)):  #
 
 @router.post("/candidate/login")
 def candidate_login(body: CandidateLogin, request: Request, db: Session = Depends(get_db)):  # noqa: B008
+    ip = client_ip(request)
+    login_guard.check(ip)
     cand = db.execute(
         select(Candidate).filter_by(candidate_id=body.candidate_id)
     ).scalar_one_or_none()
@@ -69,7 +76,9 @@ def candidate_login(body: CandidateLogin, request: Request, db: Session = Depend
         or not cand.password_hash
         or not verify_password(body.password, cand.password_hash)
     ):
+        login_guard.fail(ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+    login_guard.reset(ip)
     request.session.update({"role": "candidate", "candidate_pk": cand.id})
     record(db, actor=cand.candidate_id, action="login", detail="candidate logged in")
     return {"role": "candidate", "candidate_id": cand.candidate_id}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MessageSquare, LayoutDashboard, LogOut } from "lucide-react";
 import { api } from "../api/client";
@@ -15,6 +15,14 @@ export default function CandidateNav() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [unseenAnswers, setUnseenAnswers] = useState(0);
+  const prevUnseen = useRef<number | null>(null);
+
+  // Ask once for browser-notification permission (falls back to the badge).
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     api.get("/api/me/profile")
@@ -40,7 +48,20 @@ export default function CandidateNav() {
       api
         .get("/api/me/notifications")
         .then((d: { answered_unseen: number }) => {
-          if (active) setUnseenAnswers(d.answered_unseen);
+          if (!active) return;
+          const n = d.answered_unseen;
+          if (
+            prevUnseen.current !== null &&
+            n > prevUnseen.current &&
+            typeof Notification !== "undefined" &&
+            Notification.permission === "granted"
+          ) {
+            new Notification("Question answered", {
+              body: "Your assessor has replied — open your Questions thread.",
+            });
+          }
+          prevUnseen.current = n;
+          setUnseenAnswers(n);
         })
         .catch(() => {});
     poll();
