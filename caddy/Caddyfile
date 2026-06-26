@@ -4,6 +4,9 @@
     # fail the handshake with ERR_SSL_VERSION_OR_CIPHER_MISMATCH. RSA is
     # universally supported.
     key_type rsa2048
+    # Serve our cert even when a client connects without SNI (some interception
+    # proxies connect by IP without it), instead of failing the handshake.
+    default_sni {$APP_DOMAIN}
 }
 
 {$APP_DOMAIN} {
