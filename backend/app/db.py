@@ -10,7 +10,14 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+# pool_size 10 + max_overflow 20 = up to 30 connections (Postgres default
+# max_connections is 100). Ample headroom for the whole cohort hitting at once.
+engine = create_engine(
+    get_settings().database_url,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

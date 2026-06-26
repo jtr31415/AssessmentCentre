@@ -16,13 +16,15 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/admin/login")
 def admin_login(body: AdminLogin, request: Request, db: Session = Depends(get_db)):  # noqa: B008
-    ip = client_ip(request)
-    login_guard.check(ip)
+    # Key per (IP + account) so shared office NATs don't share one bucket —
+    # one person's mistyped password can't lock out colleagues behind the same IP.
+    guard_key = f"admin|{client_ip(request)}|{body.username}"
+    login_guard.check(guard_key)
     admin = db.execute(select(Admin).filter_by(username=body.username)).scalar_one_or_none()
     if not admin or not verify_password(body.password, admin.password_hash):
-        login_guard.fail(ip)
+        login_guard.fail(guard_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
-    login_guard.reset(ip)
+    login_guard.reset(guard_key)
     request.session.update({"role": "admin", "admin_id": admin.id})
     record(db, actor="admin", action="login", detail=f"admin '{admin.username}' logged in")
     return {"role": "admin", "id": admin.id}
@@ -65,8 +67,10 @@ def candidate_set_password(body: SetPassword, db: Session = Depends(get_db)):  #
 
 @router.post("/candidate/login")
 def candidate_login(body: CandidateLogin, request: Request, db: Session = Depends(get_db)):  # noqa: B008
-    ip = client_ip(request)
-    login_guard.check(ip)
+    # Key per (IP + candidate) so candidates behind a shared office NAT don't
+    # share one rate-limit bucket (see admin_login).
+    guard_key = f"cand|{client_ip(request)}|{body.candidate_id}"
+    login_guard.check(guard_key)
     cand = db.execute(
         select(Candidate).filter_by(candidate_id=body.candidate_id)
     ).scalar_one_or_none()
@@ -76,9 +80,9 @@ def candidate_login(body: CandidateLogin, request: Request, db: Session = Depend
         or not cand.password_hash
         or not verify_password(body.password, cand.password_hash)
     ):
-        login_guard.fail(ip)
+        login_guard.fail(guard_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
-    login_guard.reset(ip)
+    login_guard.reset(guard_key)
     request.session.update({"role": "candidate", "candidate_pk": cand.id})
     record(db, actor=cand.candidate_id, action="login", detail="candidate logged in")
     return {"role": "candidate", "candidate_id": cand.candidate_id}

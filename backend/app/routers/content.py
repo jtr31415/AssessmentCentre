@@ -79,8 +79,16 @@ def download_content(
     db.commit()
     record(db, actor=cand.candidate_id, action="file_download", detail=file_key)
 
+    # Capture what FileResponse needs, then release the DB connection NOW. The
+    # file is streamed after this function returns; without an explicit close the
+    # yield-dependency would hold the connection for the whole download, so many
+    # simultaneous/slow downloads could exhaust the pool.
+    filename = row.original_filename
+    media_type = row.media_type
+    db.close()
+
     return FileResponse(
         path=str(path),
-        filename=row.original_filename,
-        media_type=row.media_type,
+        filename=filename,
+        media_type=media_type,
     )
