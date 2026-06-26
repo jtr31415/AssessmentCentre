@@ -101,9 +101,15 @@ export default function AdminQuestions() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-8">
       {/* Page heading */}
-      <div className="flex items-center gap-3 pb-4 border-b border-brand-hair">
-        <MessageSquare className="w-5 h-5 text-brand-blue flex-shrink-0" />
-        <h1 className="text-xl font-bold text-brand-blue">Questions Queue</h1>
+      <div className="pb-4 border-b border-brand-hair space-y-1.5">
+        <div className="flex items-center gap-3">
+          <MessageSquare className="w-5 h-5 text-brand-blue flex-shrink-0" />
+          <h1 className="text-xl font-bold text-brand-blue">Questions Queue</h1>
+        </div>
+        <p className="text-xs text-brand-muted">
+          Each thread is private — only the candidate and the assessor can see the
+          questions and answers. No other candidate sees them.
+        </p>
       </div>
 
       {/* Loading */}

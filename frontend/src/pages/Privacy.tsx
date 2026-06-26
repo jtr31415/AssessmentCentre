@@ -18,7 +18,10 @@ export default function Privacy() {
             system-generated ID (e.g.{" "}
             <code className="font-mono bg-brand-codebg px-1">cand-07</code>), together with your
             assessment booking, file downloads, questions you ask, and an Anthropic API key stored{" "}
-            <strong className="font-semibold text-brand-blue">encrypted</strong>.
+            <strong className="font-semibold text-brand-blue">encrypted</strong>. Any questions you
+            ask and the assessor's answers are{" "}
+            <strong className="font-semibold text-brand-blue">private</strong> — visible only to you
+            and your assessor, never to other candidates.
           </p>
           <p>
             We do <strong className="font-bold">not</strong> store your email, surname, phone number,

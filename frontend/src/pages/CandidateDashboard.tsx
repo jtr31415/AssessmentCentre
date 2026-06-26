@@ -406,7 +406,8 @@ function Sidebar() {
         </div>
         <p className="text-xs text-brand-ink leading-relaxed ml-4">
           If anything in the brief or data is unclear, send a question to your
-          assessor before your session.
+          assessor before your session. Both your question and the assessor's
+          reply stay private — visible only to you and your assessor.
         </p>
         <a
           href="/questions"

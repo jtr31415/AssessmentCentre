@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Check, Clock, MessageSquare } from "lucide-react";
+import { ArrowLeft, Check, Clock, MessageSquare, ShieldCheck } from "lucide-react";
 import { api } from "../api/client";
 
 interface Question {
@@ -81,6 +81,16 @@ export default function CandidateQA() {
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
         {/* Main column */}
         <div className="md:col-span-8 space-y-6">
+          {/* Privacy banner */}
+          <div className="bg-emerald-50 border border-emerald-300 p-4 rounded-lg flex items-start gap-3 text-emerald-900">
+            <ShieldCheck className="w-5 h-5 mt-0.5 flex-shrink-0 text-emerald-600" />
+            <p className="text-xs leading-relaxed">
+              <strong>This thread is private.</strong> Both your questions and your
+              assessor's answers are confidential — visible only to you and your assessor.
+              No other candidate can see them.
+            </p>
+          </div>
+
           {/* SLA banner */}
           {slaText && (
             <div className="bg-brand-b5 border border-brand-b4 p-4 rounded-lg flex items-start gap-3 text-brand-blue">
@@ -123,6 +133,7 @@ export default function CandidateQA() {
                 />
                 <p className="text-[10px] text-brand-muted mt-1">
                   Keep your questions concise. Your assessor will answer inline below.
+                  Only you and your assessor can see your questions and their answers.
                 </p>
               </div>
 
@@ -219,9 +230,9 @@ export default function CandidateQA() {
           <div className="border border-brand-hair rounded-lg p-5 bg-brand-codebg space-y-3 text-xs text-brand-muted">
             <h3 className="font-bold text-brand-blue">Assessment Support</h3>
             <p className="leading-relaxed">
-              Your assessor holds manual office hours across European business working
-              intervals. Questions are logged, anonymised inside our audit queues, and
-              answered sequentially.
+              Your assessor answers questions personally during European business hours.
+              Both your questions and their answers stay strictly private — visible only
+              to you and your assessor, never to other candidates.
             </p>
             <p className="leading-relaxed">
               Please keep your questions concise and specific to the assessment
